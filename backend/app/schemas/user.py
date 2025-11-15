@@ -1,5 +1,6 @@
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, ConfigDict
+from typing import Optional
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
 
 
 class UserBase(BaseModel):
@@ -7,15 +8,21 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str
+    company_name: str
+    enc_password: str  # RSA-encrypted password (base64)
 
 
 class UserRead(UserBase):
     id: int
     is_active: bool
     created_at: datetime
-    company_id: int | None = None
-    model_config = ConfigDict(from_attributes=True)
+    company_name: str | None = Field(default=None, validation_alias="company")
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class UserProfileUpdate(BaseModel):
+    email: EmailStr | None = None
+    company_name: str | None = None
 
 
 class Token(BaseModel):
@@ -25,4 +32,9 @@ class Token(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    enc_password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    enc_current_password: str
+    enc_new_password: str

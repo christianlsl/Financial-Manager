@@ -1,0 +1,21 @@
+# Financial Manager backend configuration
+
+server:
+  host: 0.0.0.0
+  port: 9910
+
+frontend:
+  # Allowed origins for CORS
+  origins:
+    - http://localhost:5173
+
+backend:
+  # Security and token settings
+  secret_key: change-this-in-production-super-secret-key
+  jwt_algorithm: HS256
+  access_token_expire_minutes: 60
+  refresh_threshold_minutes: 10
+
+database:
+  # Default SQLite DB path (relative to repo root: backend/financial_manager.db)
+  sqlite_db_path: backend/financial_manager.db

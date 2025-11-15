@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:9910'
 
-// Create a single axios instance so we can attach interceptors for token refresh
-const api = axios.create({ baseURL: API_BASE })
+export const api = axios.create({ baseURL: API_BASE })
+let interceptorsAttached = false
 
 export const useAuthStore = defineStore('auth', {
     state: () => ({
@@ -12,14 +12,29 @@ export const useAuthStore = defineStore('auth', {
         email: localStorage.getItem('fm_email') || null,
         loading: false,
         error: null,
+        pubkeyPem: null,
+        pubkeyKey: null,
     }),
     getters: {
         isAuthenticated: (state) => !!state.token,
         authHeaders: (state) => state.token ? { Authorization: `Bearer ${state.token}` } : {},
     },
     actions: {
-        _attachInterceptorsOnce() {
-            if (this._interceptorsAttached) return
+        async ensureCrypto() {
+            if (this.pubkeyKey) return
+            try {
+                const r = await api.get('/auth/pubkey')
+                this.pubkeyPem = r.data?.pem
+                if (this.pubkeyPem) {
+                    this.pubkeyKey = await importRsaPublicKey(this.pubkeyPem)
+                }
+            } catch (e) {
+                // If fetching/importing key fails, we'll fall back to plaintext
+                this.pubkeyKey = null
+            }
+        },
+        ensureInterceptors() {
+            if (interceptorsAttached) return
             // Request: inject Authorization header
             api.interceptors.request.use(cfg => {
                 if (this.token) {
@@ -39,20 +54,30 @@ export const useAuthStore = defineStore('auth', {
                 // Optional: auto-logout on 401 token expired (detail === 'Token expired')
                 if (err.response?.status === 401) {
                     const detail = err.response?.data?.detail
-                    if (detail === 'Token expired') {
+                    if (detail === 'Token expired' || detail === 'Could not validate credentials') {
                         this.logout()
                     }
                 }
                 return Promise.reject(err)
             })
-            this._interceptorsAttached = true
+            interceptorsAttached = true
         },
         async login(email, password) {
             this.loading = true
             this.error = null
             try {
-                this._attachInterceptorsOnce()
-                const r = await api.post(`/auth/login`, { email, password })
+                this.ensureInterceptors()
+                await this.ensureCrypto()
+                let payload = { email, password }
+                if (this.pubkeyKey && window.crypto?.subtle) {
+                    try {
+                        const enc_password = await rsaEncryptToBase64(this.pubkeyKey, password)
+                        payload = { email, enc_password }
+                    } catch (_) {
+                        // fall back to plaintext
+                    }
+                }
+                const r = await api.post(`/auth/login`, payload)
                 this.token = r.data.access_token
                 this.email = email
                 localStorage.setItem('fm_token', this.token)
@@ -64,12 +89,22 @@ export const useAuthStore = defineStore('auth', {
                 this.loading = false
             }
         },
-        async register(email, password) {
+        async register(email, password, companyName = null) {
             this.loading = true
             this.error = null
             try {
-                this._attachInterceptorsOnce()
-                await api.post(`/auth/register`, { email, password })
+                this.ensureInterceptors()
+                await this.ensureCrypto()
+                let payload = { email, password, company_name: companyName }
+                if (this.pubkeyKey && window.crypto?.subtle) {
+                    try {
+                        const enc_password = await rsaEncryptToBase64(this.pubkeyKey, password)
+                        payload = { email, enc_password, company_name: companyName }
+                    } catch (_) {
+                        // fall back to plaintext
+                    }
+                }
+                await api.post(`/auth/register`, payload)
                 await this.login(email, password)
             } catch (e) {
                 this.error = e.response?.data?.detail || e.message
@@ -87,8 +122,33 @@ export const useAuthStore = defineStore('auth', {
     }
 })
 
-// Ensure interceptors attach early if a token already exists on page load
-const preAuthStore = useAuthStore()
-if (preAuthStore.token) {
-    preAuthStore._attachInterceptorsOnce()
+// --- Crypto helpers (Web Crypto API: RSA-OAEP-256) ---
+function pemToArrayBuffer(pem) {
+    const b64 = pem.replace(/-----BEGIN PUBLIC KEY-----/g, '')
+        .replace(/-----END PUBLIC KEY-----/g, '')
+        .replace(/\s+/g, '')
+    const raw = atob(b64)
+    const arr = new Uint8Array(raw.length)
+    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i)
+    return arr.buffer
+}
+
+async function importRsaPublicKey(pem) {
+    const spki = pemToArrayBuffer(pem)
+    return await window.crypto.subtle.importKey(
+        'spki',
+        spki,
+        { name: 'RSA-OAEP', hash: 'SHA-256' },
+        false,
+        ['encrypt']
+    )
+}
+
+async function rsaEncryptToBase64(publicKey, text) {
+    const data = new TextEncoder().encode(text)
+    const buf = await window.crypto.subtle.encrypt({ name: 'RSA-OAEP' }, publicKey, data)
+    const bytes = new Uint8Array(buf)
+    let binary = ''
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+    return btoa(binary)
 }

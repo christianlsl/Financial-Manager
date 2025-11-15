@@ -6,12 +6,22 @@ FastAPI + Vue3 financial management system for small companies. Features:
 - Manage purchase list, sales list, and invoices
 - SQLite storage (default) with SQLAlchemy ORM
 
+
+
 ### Backend
 
 Install dependencies (using uv or pip):
 
 ```bash
 uv sync
+```
+## Database
+
+Reset and Initialize Database:
+
+```bash
+cd ./backend
+uv run -m app.utils.manage_db
 ```
 
 Run development server:
@@ -54,11 +64,11 @@ npm run build
 
 ### Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| FM_SECRET_KEY | Override default JWT secret |
-| FM_ACCESS_TOKEN_EXPIRE_MINUTES | Token expiration minutes |
-| FM_JWT_ALGORITHM | JWT algorithm (default HS256) |
+| Variable                       | Description                   |
+| ------------------------------ | ----------------------------- |
+| FM_SECRET_KEY                  | Override default JWT secret   |
+| FM_ACCESS_TOKEN_EXPIRE_MINUTES | Token expiration minutes      |
+| FM_JWT_ALGORITHM               | JWT algorithm (default HS256) |
 
 ### Next Steps
 

@@ -1,20 +1,38 @@
 <template>
-  <router-view />
+  <el-config-provider :button="{ autoInsertSpace: true }">
+    <router-view />
+  </el-config-provider>
 </template>
 
 <script setup>
+import { ElConfigProvider } from 'element-plus'
 </script>
 
 <style>
-html, body, #app { height: 100%; margin: 0; }
-body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', sans-serif; }
-a { color: #3e7bfa; text-decoration: none; }
-nav { display: flex; gap: 12px; padding: 8px 16px; border-bottom: 1px solid #eee; }
-.container { padding: 16px; max-width: 960px; margin: 0 auto; }
-label { display: block; margin: 8px 0 4px; }
-input, select, textarea { padding: 8px; width: 100%; box-sizing: border-box; }
-button { padding: 8px 12px; cursor: pointer; }
-table { border-collapse: collapse; width: 100%; }
-th, td { border: 1px solid #ddd; padding: 8px; }
-th { background: #f8f8f8; }
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
+  background: #f4f6f6;
+}
+
+a {
+  color: var(--el-color-primary);
+  text-decoration: none;
+}
+
+:root {
+  --el-color-primary: #4b8b79;
+  --el-color-primary-light-3: #6ca593;
+  --el-color-primary-light-5: #81b5a2;
+  --el-color-primary-light-7: #a2cab8;
+  --el-color-primary-light-8: #b6d6c6;
+  --el-color-primary-light-9: #d5e9df;
+  --el-color-primary-dark-2: #3a6b5c;
+}
 </style>

@@ -6,7 +6,8 @@ const Register = () => import('../views/Register.vue')
 const Dashboard = () => import('../views/Dashboard.vue')
 const Purchases = () => import('../views/Purchases.vue')
 const Sales = () => import('../views/Sales.vue')
-const Invoices = () => import('../views/Invoices.vue')
+const Customers = () => import('../views/Customers.vue')
+const Settings = () => import('../views/Settings.vue')
 
 const routes = [
     { path: '/', redirect: '/dashboard' },
@@ -15,7 +16,8 @@ const routes = [
     { path: '/dashboard', component: Dashboard, meta: { requiresAuth: true } },
     { path: '/purchases', component: Purchases, meta: { requiresAuth: true } },
     { path: '/sales', component: Sales, meta: { requiresAuth: true } },
-    { path: '/invoices', component: Invoices, meta: { requiresAuth: true } },
+    { path: '/customers', component: Customers, meta: { requiresAuth: true } },
+    { path: '/settings', component: Settings, meta: { requiresAuth: true } },
 ]
 
 const router = createRouter({
@@ -27,6 +29,8 @@ router.beforeEach((to, _from, next) => {
     const auth = useAuthStore()
     if (to.meta.requiresAuth && !auth.isAuthenticated) {
         next('/login')
+    } else if ((to.path === '/login' || to.path === '/register') && auth.isAuthenticated) {
+        next('/dashboard')
     } else {
         next()
     }

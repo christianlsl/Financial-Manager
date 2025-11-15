@@ -1,8 +1,8 @@
 from sqlalchemy import Column, Integer, String
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, foreign
 
 from ..db import Base
-from .user_customer import user_customer_table
+from .user_company import user_company_table
 
 
 class Company(Base):
@@ -16,7 +16,10 @@ class Company(Base):
     email = Column(String(255), nullable=True)
 
     # Backrefs
-    members = relationship("User", back_populates="company", foreign_keys="User.company_id")
-    owners = relationship("User", secondary=user_customer_table, back_populates="customer_companies")
-    purchases = relationship("Purchase", back_populates="company")
-    sales = relationship("Sale", back_populates="company")
+    vendors = relationship("User", secondary=user_company_table, back_populates="customer_companies")
+    members = relationship(
+        "Customer",
+        primaryjoin="Company.id == foreign(Customer.company_id)",
+        foreign_keys="Customer.company_id",
+        viewonly=True,
+    )
