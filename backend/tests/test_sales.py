@@ -39,6 +39,7 @@ def test_sale_crud_flow_with_owned_relations(client, auth_headers, attach_vendor
     assert sale["type_id"] == type_id
     assert sale["customer_id"] == customer_id
     assert "company_id" not in sale
+    assert sale["image_url"] is None
 
     list_resp = client.get("/sales/", headers=headers)
     assert list_resp.status_code == 200
@@ -50,15 +51,17 @@ def test_sale_crud_flow_with_owned_relations(client, auth_headers, attach_vendor
     assert detail_resp.status_code == 200
     assert detail_resp.json()["status"] == "sent"
 
+    image_url = "https://cdn.example.com/sales/img-1.jpg"
     update_resp = client.put(
         f"/sales/{sale_id}",
-        json={"status": "paid", "items_count": 5},
+        json={"status": "paid", "items_count": 5, "image_url": image_url},
         headers=headers,
     )
     assert update_resp.status_code == 200
     assert update_resp.json()["status"] == "paid"
     assert update_resp.json()["items_count"] == 5
     assert update_resp.json()["total_price"] == "1123.75"
+    assert update_resp.json()["image_url"] == image_url
 
     delete_resp = client.delete(f"/sales/{sale_id}", headers=headers)
     assert delete_resp.status_code == 200

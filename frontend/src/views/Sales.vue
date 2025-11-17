@@ -132,6 +132,22 @@
             <el-table-column label="金额" width="110">
               <template #default="{ row }">¥ {{ formatAmount(row.total_price) }}</template>
             </el-table-column>
+            <el-table-column label="图片" width="160">
+              <template #default="{ row }">
+                <div class="sales__image-cell">
+                  <el-image v-if="row.image_url" :src="row.image_url" class="sales__image-thumb" fit="cover"
+                    :preview-src-list="[row.image_url]" />
+                  <div v-else class="sales__image-placeholder">无</div>
+                  <el-upload class="sales__image-upload" accept="image/*" :limit="1" :show-file-list="false"
+                    :http-request="(options) => handleRowImageUpload(options, row)">
+                    <el-button link size="small" :loading="!!rowImageUploading[row.id]"
+                      :disabled="!!rowImageUploading[row.id]">
+                      上传
+                    </el-button>
+                  </el-upload>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column label="状态" width="110">
               <template #default="{ row }">
                 <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
@@ -188,6 +204,14 @@
         <el-form-item label="销售金额" prop="total_price">
           <el-input-number v-model="form.total_price" :min="0" :step="10" :precision="2" disabled />
         </el-form-item>
+        <el-form-item label="销售图片">
+          <el-upload class="sales__uploader" list-type="picture-card" accept="image/*" :limit="1"
+            :file-list="formImageList" :http-request="handleFormImageUpload" :on-remove="handleFormImageRemove">
+            <el-icon>
+              <Plus />
+            </el-icon>
+          </el-upload>
+        </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="form.status">
             <el-radio-button :value="'draft'">已下单</el-radio-button>
@@ -229,6 +253,7 @@ const saving = ref(false)
 const dialogVisible = ref(false)
 const formRef = ref()
 const form = reactive(createDefaultForm())
+const formImageList = ref([])
 const filters = reactive({
   keyword: '',
   customerId: null,
@@ -240,6 +265,7 @@ const filters = reactive({
   amountMax: null
 })
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
+const rowImageUploading = reactive({})
 
 const rules = {
   date: [{ required: true, message: '请选择销售日期', trigger: 'change' }],
@@ -265,7 +291,8 @@ function createDefaultForm() {
     unit_price: 0,
     total_price: 0,
     status: 'draft',
-    notes: ''
+    notes: '',
+    image_url: null
   }
 }
 
@@ -275,6 +302,14 @@ watch(
     const normalizedCount = Number(count) || 0
     const normalizedPrice = Number(price) || 0
     form.total_price = Number((normalizedCount * normalizedPrice).toFixed(2))
+  },
+  { immediate: true }
+)
+
+watch(
+  () => form.image_url,
+  (url) => {
+    formImageList.value = url ? [{ name: 'sale-image', url }] : []
   },
   { immediate: true }
 )
@@ -336,6 +371,72 @@ function flattenCustomers(groups) {
 function openCreateDialog() {
   Object.assign(form, createDefaultForm())
   dialogVisible.value = true
+}
+
+function validateImageFile(file) {
+  const isImage = file?.type?.startsWith('image/')
+  if (!isImage) {
+    ElMessage.error('仅支持图片文件')
+    return false
+  }
+  return true
+}
+
+async function uploadImageFile(rawFile) {
+  const formData = new FormData()
+  formData.append('file', rawFile)
+  auth.ensureInterceptors()
+  const { data } = await api.post('/sales/images', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+  if (!data?.url) {
+    throw new Error('图片上传失败')
+  }
+  return data.url
+}
+
+async function handleFormImageUpload({ file, onError, onSuccess }) {
+  if (!validateImageFile(file)) {
+    onError?.(new Error('invalid file'))
+    return
+  }
+  try {
+    const url = await uploadImageFile(file)
+    form.image_url = url
+    formImageList.value = [{ name: file.name || 'sale-image', url }]
+    onSuccess?.({ url })
+    ElMessage.success('图片上传成功')
+  } catch (error) {
+    onError?.(error)
+    const message = error?.response?.data?.detail || error?.message || '图片上传失败'
+    ElMessage.error(message)
+  }
+}
+
+function handleFormImageRemove() {
+  form.image_url = null
+  formImageList.value = []
+}
+
+async function handleRowImageUpload({ file, onError, onSuccess }, row) {
+  if (!validateImageFile(file)) {
+    onError?.(new Error('invalid file'))
+    return
+  }
+  rowImageUploading[row.id] = true
+  try {
+    const url = await uploadImageFile(file)
+    await api.put(`/sales/${row.id}`, { image_url: url })
+    row.image_url = url
+    onSuccess?.({ url })
+    ElMessage.success('图片已更新')
+  } catch (error) {
+    onError?.(error)
+    const message = error?.response?.data?.detail || error?.message || '上传失败'
+    ElMessage.error(message)
+  } finally {
+    rowImageUploading[row.id] = false
+  }
 }
 
 async function loadLookups() {
@@ -528,5 +629,32 @@ onMounted(async () => {
   /* grid-template-columns: 1fr;
   min-width: 0; */
   /* overflow: auto; */
+}
+
+.sales__image-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sales__image-thumb,
+.sales__image-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  background: #f2f3f5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #909399;
+}
+
+.sales__image-upload {
+  margin: 0;
+}
+
+.sales__uploader :deep(.el-upload--picture-card) {
+  border-radius: 8px;
 }
 </style>

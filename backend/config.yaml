@@ -16,6 +16,15 @@ backend:
   access_token_expire_minutes: 60
   refresh_threshold_minutes: 10
 
+uploads:
+  max_size_kb: 500
+  qiniu:
+    access_key: "SaObThZgCz0nzq83PEgAKsOmPWr5Q48tEAk2YFet"
+    secret_key: "Db1LOEjo4EU3vcdyCPZcF5G3sCtBnOOvNl1hzHEk"
+    bucket: "financial-manager"
+    domain: "t5umvpop2.hd-bkt.clouddn.com"
+    base_path: sales-images
+
 database:
   # Default SQLite DB path (relative to repo root: backend/financial_manager.db)
   sqlite_db_path: backend/financial_manager.db

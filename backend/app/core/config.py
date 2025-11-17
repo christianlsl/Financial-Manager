@@ -59,6 +59,17 @@ class Settings:
         self.SERVER_HOST: str = str(srv_cfg.get("host", "0.0.0.0"))
         self.SERVER_PORT: int = int(srv_cfg.get("port", 8000))
 
+        uploads_cfg = cfg.get("uploads", {}) if isinstance(cfg.get("uploads", {}), dict) else {}
+        self.UPLOAD_MAX_SIZE_KB: int = int(uploads_cfg.get("max_size_kb", 500))
+        self.UPLOAD_MAX_SIZE_BYTES: int = max(1, self.UPLOAD_MAX_SIZE_KB) * 1024
+        qiniu_cfg = uploads_cfg.get("qiniu", {}) if isinstance(uploads_cfg.get("qiniu", {}), dict) else {}
+        self.QINIU_ACCESS_KEY: str = str(qiniu_cfg.get("access_key", "")).strip()
+        self.QINIU_SECRET_KEY: str = str(qiniu_cfg.get("secret_key", "")).strip()
+        self.QINIU_BUCKET: str = str(qiniu_cfg.get("bucket", "")).strip()
+        self.QINIU_DOMAIN: str = str(qiniu_cfg.get("domain", "")).strip().rstrip("/")
+        base_path = str(qiniu_cfg.get("base_path", "sales-images")).strip().strip("/")
+        self.QINIU_BASE_PATH: str = base_path or "sales-images"
+
     @property
     def ACCESS_TOKEN_EXPIRE_DELTA(self) -> timedelta:
         return timedelta(minutes=self.ACCESS_TOKEN_EXPIRE_MINUTES)

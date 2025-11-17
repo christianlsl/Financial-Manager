@@ -23,6 +23,7 @@ class Sale(Base):
     items_count = Column(Integer, nullable=False, default=0)
     unit_price = Column(Numeric(12, 2), nullable=False, default=0)
     total_price = Column(Numeric(12, 2), nullable=False, default=0)
+    image_url = Column(String(512), nullable=True)
     status = Column(String(50), nullable=False, default=SaleStatusEnum.DRAFT)
     notes = Column(Text, nullable=True)
 

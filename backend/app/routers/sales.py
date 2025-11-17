@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -12,7 +12,8 @@ from ..models.customer import Customer
 from ..models.sale import Sale, SaleStatusEnum
 from ..models.type import Type
 from ..models.user import User
-from ..schemas.sale import SaleCreate, SaleList, SaleRead, SaleUpdate
+from ..schemas.sale import SaleCreate, SaleImageUploadResponse, SaleList, SaleRead, SaleUpdate
+from ..services.image_uploader import ImageUploadError, uploader
 
 router = APIRouter()
 
@@ -170,6 +171,21 @@ def create_sale(
     db.commit()
     db.refresh(sale)
     return sale
+
+
+@router.post("/images", response_model=SaleImageUploadResponse)
+async def upload_sale_image(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="仅支持图片格式上传")
+    data = await file.read()
+    try:
+        url = uploader.upload(data, file.filename)
+    except ImageUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return SaleImageUploadResponse(url=url)
 
 
 @router.get("/{sale_id}", response_model=SaleRead)

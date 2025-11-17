@@ -17,6 +17,7 @@ class SaleBase(BaseModel):
     total_price: Decimal
     status: str = "draft"
     notes: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 class SaleCreate(SaleBase):
@@ -33,6 +34,7 @@ class SaleUpdate(BaseModel):
     total_price: Optional[Decimal] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 class SaleRead(SaleBase):
@@ -44,3 +46,7 @@ class SaleRead(SaleBase):
 class SaleList(BaseModel):
     items: list[SaleRead]
     total: int
+
+
+class SaleImageUploadResponse(BaseModel):
+    url: str

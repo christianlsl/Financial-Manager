@@ -16,6 +16,8 @@ dependencies = [
 	"pytest>=8.0",
 	"PyYAML>=6.0",
 	"pwdlib[argon2]>=0.3.0",
+	"qiniu>=7.17.0",
+	"pillow>=10.4",
 ]
 
 [build-system]
