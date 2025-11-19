@@ -67,8 +67,8 @@ class Settings:
         self.QINIU_SECRET_KEY: str = str(qiniu_cfg.get("secret_key", "")).strip()
         self.QINIU_BUCKET: str = str(qiniu_cfg.get("bucket", "")).strip()
         self.QINIU_DOMAIN: str = str(qiniu_cfg.get("domain", "")).strip().rstrip("/")
-        base_path = str(qiniu_cfg.get("base_path", "sales-images")).strip().strip("/")
-        self.QINIU_BASE_PATH: str = base_path or "sales-images"
+        base_path = str(qiniu_cfg.get("base_path")).strip().strip("/")
+        self.QINIU_BASE_PATH: str = base_path
 
     @property
     def ACCESS_TOKEN_EXPIRE_DELTA(self) -> timedelta:

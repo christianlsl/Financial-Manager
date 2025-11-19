@@ -136,13 +136,14 @@
               <template #default="{ row }">
                 <div class="sales__image-cell">
                   <el-image v-if="row.image_url" :src="row.image_url" class="sales__image-thumb" fit="cover"
-                    :preview-src-list="[row.image_url]" />
+                    :preview-src-list="[row.image_url]" :preview-teleported="true" />
                   <div v-else class="sales__image-placeholder">无</div>
                   <el-upload class="sales__image-upload" accept="image/*" :limit="1" :show-file-list="false"
-                    :http-request="(options) => handleRowImageUpload(options, row)">
-                    <el-button link size="small" :loading="!!rowImageUploading[row.id]"
+                    :http-request="(options) => handleRowImageUpload(options, row)"
+                    :on-exceed="(files) => handleRowImageExceed(files, row)">
+                    <el-button type="info" plain size="small" :loading="!!rowImageUploading[row.id]"
                       :disabled="!!rowImageUploading[row.id]">
-                      上传
+                      上传/修改
                     </el-button>
                   </el-upload>
                 </div>
@@ -158,10 +159,11 @@
             </el-table-column>
             <el-table-column label="操作" width="120" fixed="right">
               <template #default="{ row }">
+                <el-button type="warning" link size="small" @click="openEditDialog(row)">修改</el-button>
                 <el-popconfirm title="确认删除该销售记录？" confirm-button-text="删除" cancel-button-text="取消"
                   @confirm="removeSale(row.id)">
                   <template #reference>
-                    <el-button type="danger" text size="small">删除</el-button>
+                    <el-button type="danger" link size="small">删除</el-button>
                   </template>
                 </el-popconfirm>
               </template>
@@ -175,7 +177,7 @@
       </el-card>
     </el-space>
 
-    <el-dialog v-model="dialogVisible" title="新建销售" width="560px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" title="销售数据" width="560px" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="rules" label-width="96px">
         <el-form-item label="销售日期" prop="date">
           <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期"
@@ -206,7 +208,9 @@
         </el-form-item>
         <el-form-item label="销售图片">
           <el-upload class="sales__uploader" list-type="picture-card" accept="image/*" :limit="1"
-            :file-list="formImageList" :http-request="handleFormImageUpload" :on-remove="handleFormImageRemove">
+            :file-list="formImageList" :auto-upload="false" :on-change="handleFormImageChange"
+            :on-remove="handleFormImageRemove" :on-exceed="handleFormImageExceed"
+            :on-preview="handlePictureCardPreview">
             <el-icon>
               <Plus />
             </el-icon>
@@ -230,12 +234,18 @@
         </el-space>
       </template>
     </el-dialog>
+    <el-dialog v-model="previewVisible" title="预览" width="560px">
+      <img v-if="previewImageUrl" :src="previewImageUrl" style="width: 100%; display: block;" />
+      <template #footer>
+        <el-button @click="previewVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </AppShell>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 
 import AppShell from '../components/AppShell.vue'
@@ -251,9 +261,14 @@ const loading = ref(false)
 const saving = ref(false)
 
 const dialogVisible = ref(false)
+const isEditing = ref(false)
+const editingId = ref(null)
 const formRef = ref()
 const form = reactive(createDefaultForm())
 const formImageList = ref([])
+const formImageFile = ref(null)
+const previewVisible = ref(false)
+const previewImageUrl = ref('')
 const filters = reactive({
   keyword: '',
   customerId: null,
@@ -276,8 +291,8 @@ const rules = {
 }
 
 const statusOptions = computed(() => ({
-  draft: { label: '已下单', type: 'danger' },
-  sent: { label: '已送货', type: 'warning' },
+  draft: { label: '已下单', type: 'warning' },
+  sent: { label: '已送货', type: 'info' },
   paid: { label: '已支付', type: 'success' }
 }))
 
@@ -309,7 +324,10 @@ watch(
 watch(
   () => form.image_url,
   (url) => {
-    formImageList.value = url ? [{ name: 'sale-image', url }] : []
+    // When opening dialogs or after reload, reflect existing image
+    if (!formImageFile.value) {
+      formImageList.value = url ? [{ name: 'sale-image', url }] : []
+    }
   },
   { immediate: true }
 )
@@ -370,6 +388,26 @@ function flattenCustomers(groups) {
 
 function openCreateDialog() {
   Object.assign(form, createDefaultForm())
+  isEditing.value = false
+  editingId.value = null
+  dialogVisible.value = true
+}
+
+function openEditDialog(row) {
+  Object.assign(form, {
+    date: row.date,
+    customer_id: row.customer_id ?? null,
+    type_id: row.type_id ?? null,
+    item_name: row.item_name || '',
+    items_count: Number(row.items_count ?? 1),
+    unit_price: Number(row.unit_price ?? 0),
+    total_price: Number(row.total_price ?? 0),
+    status: row.status || 'draft',
+    notes: row.notes || '',
+    image_url: row.image_url || null
+  })
+  isEditing.value = true
+  editingId.value = row.id
   dialogVisible.value = true
 }
 
@@ -382,40 +420,68 @@ function validateImageFile(file) {
   return true
 }
 
-async function uploadImageFile(rawFile) {
-  const formData = new FormData()
-  formData.append('file', rawFile)
-  auth.ensureInterceptors()
-  const { data } = await api.post('/sales/images', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  })
-  if (!data?.url) {
-    throw new Error('图片上传失败')
-  }
-  return data.url
-}
-
-async function handleFormImageUpload({ file, onError, onSuccess }) {
-  if (!validateImageFile(file)) {
-    onError?.(new Error('invalid file'))
-    return
-  }
-  try {
-    const url = await uploadImageFile(file)
-    form.image_url = url
-    formImageList.value = [{ name: file.name || 'sale-image', url }]
-    onSuccess?.({ url })
-    ElMessage.success('图片上传成功')
-  } catch (error) {
-    onError?.(error)
-    const message = error?.response?.data?.detail || error?.message || '图片上传失败'
-    ElMessage.error(message)
-  }
+function handleFormImageChange(uploadFile) {
+  const file = uploadFile?.raw || uploadFile
+  if (!validateImageFile(file)) return false
+  formImageFile.value = file
+  const name = file.name || 'sale-image'
+  const url = URL.createObjectURL(file)
+  formImageList.value = [{ name, url }]
+  return false
 }
 
 function handleFormImageRemove() {
-  form.image_url = null
+  // Element Plus triggers on-remove after click; ask for confirmation first.
+  ElMessageBox.confirm('确认删除当前图片？', '提示', { type: 'warning' })
+    .then(async () => {
+      try {
+        // If removing a persisted image on an existing record, also clear it on the server (and Qiniu)
+        const removingPersisted = isEditing.value && editingId.value && !!form.image_url && !formImageFile.value
+        if (removingPersisted) {
+          // Backend will clear DB field and delete the remote image
+          await api.put(`/sales/${editingId.value}`, { image_url: null })
+          form.image_url = null
+        }
+        // Clear local selection/list regardless
+        formImageFile.value = null
+        formImageList.value = []
+        ElMessage.success('图片已删除')
+      } catch (error) {
+        const message = error?.response?.data?.detail || error?.message || '删除失败'
+        ElMessage.error(message)
+        // Restore previous list on failure
+        if (form.image_url) {
+          formImageList.value = [{ name: 'sale-image', url: form.image_url }]
+        } else if (formImageFile.value) {
+          const url = URL.createObjectURL(formImageFile.value)
+          formImageList.value = [{ name: formImageFile.value.name || 'sale-image', url }]
+        }
+      }
+    })
+    .catch(() => {
+      // User canceled: restore current view
+      if (form.image_url) {
+        formImageList.value = [{ name: 'sale-image', url: form.image_url }]
+      } else if (formImageFile.value) {
+        const url = URL.createObjectURL(formImageFile.value)
+        formImageList.value = [{ name: formImageFile.value.name || 'sale-image', url }]
+      } else {
+        formImageList.value = []
+      }
+    })
+}
+
+function handleFormImageExceed(files) {
+  const file = Array.isArray(files) ? files[0] : files
+  if (!file) return
+  if (!validateImageFile(file)) return
+  // Replace the previous selection with the new file
+  formImageFile.value = null
   formImageList.value = []
+  const name = file.name || 'sale-image'
+  const url = URL.createObjectURL(file)
+  formImageFile.value = file
+  formImageList.value = [{ name, url }]
 }
 
 async function handleRowImageUpload({ file, onError, onSuccess }, row) {
@@ -425,8 +491,13 @@ async function handleRowImageUpload({ file, onError, onSuccess }, row) {
   }
   rowImageUploading[row.id] = true
   try {
-    const url = await uploadImageFile(file)
-    await api.put(`/sales/${row.id}`, { image_url: url })
+    const formData = new FormData()
+    formData.append('image_file', file)
+    auth.ensureInterceptors()
+    const { data } = await api.put(`/sales/${row.id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    const url = data?.image_url || null
     row.image_url = url
     onSuccess?.({ url })
     ElMessage.success('图片已更新')
@@ -437,6 +508,19 @@ async function handleRowImageUpload({ file, onError, onSuccess }, row) {
   } finally {
     rowImageUploading[row.id] = false
   }
+}
+
+function handleRowImageExceed(files, row) {
+  const file = Array.isArray(files) ? files[0] : files
+  if (!file) return
+  handleRowImageUpload({ file }, row)
+}
+
+function handlePictureCardPreview(file) {
+  const url = file?.url
+  if (!url) return
+  previewImageUrl.value = url
+  previewVisible.value = true
 }
 
 async function loadLookups() {
@@ -507,14 +591,43 @@ async function submitForm() {
     else payload.type_id = Number(payload.type_id)
     if (!payload.item_name) payload.item_name = null
     if (!payload.notes) payload.notes = null
-    await api.post('/sales/', payload)
-    ElMessage.success('创建销售成功')
+    if (isEditing.value && editingId.value) {
+      // If an image file is selected, send multipart with data+file; else JSON only
+      if (formImageFile.value) {
+        const formData = new FormData()
+        formData.append('data', JSON.stringify(payload))
+        formData.append('image_file', formImageFile.value)
+        auth.ensureInterceptors()
+        await api.put(`/sales/${editingId.value}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+      } else {
+        await api.put(`/sales/${editingId.value}`, payload)
+      }
+      ElMessage.success('修改销售成功')
+    } else {
+      // Create first, then if image selected, upload via update endpoint
+      const { data: created } = await api.post('/sales/', payload)
+      const newId = created?.id
+      if (newId && formImageFile.value) {
+        const formData = new FormData()
+        formData.append('image_file', formImageFile.value)
+        auth.ensureInterceptors()
+        await api.put(`/sales/${newId}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+      }
+      ElMessage.success('创建销售成功')
+    }
     dialogVisible.value = false
+    isEditing.value = false
+    editingId.value = null
+    formImageFile.value = null
     pagination.page = 1
     await loadSales()
   } catch (error) {
     if (error?.name === 'ElFormError') return
-    const message = error?.response?.data?.detail || error?.message || '创建销售失败'
+    const message = error?.response?.data?.detail || error?.message || (isEditing.value ? '修改销售失败' : '创建销售失败')
     ElMessage.error(message)
   } finally {
     saving.value = false

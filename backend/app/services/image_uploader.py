@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import io
+import logging
 import uuid
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from PIL import Image
-from qiniu import Auth, put_data  # type: ignore
+from qiniu import Auth, BucketManager, put_data  # type: ignore
 
 from ..core.config import settings
 
@@ -34,6 +36,8 @@ class ImageUploader:
             base_path=settings.QINIU_BASE_PATH,
         )
         self._auth: Auth | None = None
+        self._bucket_manager: BucketManager | None = None
+        self._logger = logging.getLogger(__name__)
 
     def _ensure_configured(self) -> None:
         if not all(
@@ -47,6 +51,13 @@ class ImageUploader:
             raise ImageUploadError("七牛云未配置，请检查config.yaml中的uploads配置")
         if self._auth is None:
             self._auth = Auth(self._config.access_key, self._config.secret_key)
+            self._bucket_manager = None  # reset so it uses the new auth instance
+
+    def _ensure_bucket_manager(self) -> None:
+        self._ensure_configured()
+        if self._bucket_manager is None:
+            assert self._auth is not None  # for type checker
+            self._bucket_manager = BucketManager(self._auth)
 
     def _compress_image(self, data: bytes) -> tuple[bytes, str]:
         try:
@@ -92,6 +103,39 @@ class ImageUploader:
             raise ImageUploadError("七牛云上传失败，请稍后重试")
         domain = self._config.domain.rstrip("/")
         return f"{domain}/{key}"
+
+    def _extract_key(self, url: str | None) -> str | None:
+        if not url:
+            return None
+        normalized = url.strip()
+        if not normalized:
+            return None
+        parsed = urlparse(normalized)
+        if parsed.scheme and parsed.netloc:
+            key = parsed.path.lstrip("/")
+        else:
+            domain = self._config.domain.rstrip("/")
+            prefix = f"{domain}/"
+            if domain and normalized.startswith(prefix):
+                key = normalized[len(prefix) :]
+            else:
+                key = normalized.lstrip("/")
+        return key or None
+
+    def delete(self, url: str | None) -> None:
+        key = self._extract_key(url)
+        if not key:
+            return
+        self._ensure_bucket_manager()
+        assert self._bucket_manager is not None
+        try:
+            _, info = self._bucket_manager.delete(self._config.bucket, key)
+        except Exception as exc:  # pragma: no cover - network failures
+            self._logger.warning("Failed to delete image %s: %s", key, exc)
+            raise ImageUploadError("七牛云删除旧图片失败") from exc
+        if info.status_code not in (200, 204, 612):
+            self._logger.warning("Unexpected Qiniu status %s when deleting %s", info.status_code, key)
+            raise ImageUploadError("七牛云删除旧图片失败")
 
 
 uploader = ImageUploader()

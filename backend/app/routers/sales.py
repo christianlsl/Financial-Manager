@@ -1,9 +1,15 @@
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
+import json
+import logging
+from typing import Any
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
+from pydantic import ValidationError
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from ..db import get_db
 from ..deps import get_current_user
@@ -14,6 +20,8 @@ from ..models.type import Type
 from ..models.user import User
 from ..schemas.sale import SaleCreate, SaleImageUploadResponse, SaleList, SaleRead, SaleUpdate
 from ..services.image_uploader import ImageUploadError, uploader
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -72,6 +80,94 @@ def _get_accessible_customer(db: Session, current_user: User, customer_id: int) 
     return (
         db.query(Customer).filter(Customer.id == customer_id, _customer_access_filter(current_user)).first()
     )
+
+
+async def _parse_sale_update_request(request: Request) -> tuple[dict[str, Any], UploadFile | None]:
+    content_type = request.headers.get("content-type", "").lower()
+    if "multipart/form-data" in content_type:
+        form_data = await request.form()
+        payload: dict[str, Any] = {}
+        image_file: UploadFile | None = None
+        for candidate_key in ("image_file", "file", "image"):
+            candidate = form_data.get(candidate_key)
+            if isinstance(candidate, StarletteUploadFile):
+                image_file = candidate
+                break
+        for key, value in form_data.multi_items():
+            if key in {"image_file", "file", "image"} and isinstance(value, StarletteUploadFile):
+                continue
+            if key == "data" and isinstance(value, str):
+                stripped = value.strip()
+                if not stripped:
+                    continue
+                try:
+                    decoded = json.loads(stripped)
+                except json.JSONDecodeError as exc:  # pragma: no cover - invalid payload
+                    raise HTTPException(status_code=400, detail="Invalid data payload") from exc
+                if not isinstance(decoded, dict):
+                    raise HTTPException(status_code=400, detail="Invalid data payload")
+                payload.update(decoded)
+                continue
+            if isinstance(value, str) and value == "":
+                continue
+            payload[key] = value
+        return payload, image_file
+
+    body = await request.body()
+    if not body:
+        return {}, None
+    try:
+        decoded_body = json.loads(body)
+    except json.JSONDecodeError as exc:  # pragma: no cover - invalid json
+        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+    if not isinstance(decoded_body, dict):
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+    return decoded_body, None
+
+
+def _normalize_update_payload_types(payload: dict[str, Any]) -> dict[str, Any]:
+    """Coerce common fields from strings to their target types for update requests.
+
+    - date: str -> date
+    - items_count, customer_id, type_id: str -> int
+    - unit_price, total_price: str -> Decimal (handled later by _to_decimal)
+    - empty strings -> None for optional text fields
+    """
+    if not payload:
+        return payload
+    normalized = dict(payload)
+    # Normalize date
+    d = normalized.get("date")
+    if isinstance(d, str) and d.strip():
+        try:
+            normalized["date"] = date.fromisoformat(d.strip())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD") from exc
+    # Normalize integer-like fields
+    for k in ("items_count", "customer_id", "type_id"):
+        v = normalized.get(k)
+        if isinstance(v, str) and v.strip():
+            try:
+                normalized[k] = int(v)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid integer value for {k}") from exc
+    # Normalize decimals as strings (Decimal parsing happens in _apply_price_validation)
+    for k in ("unit_price", "total_price"):
+        v = normalized.get(k)
+        if isinstance(v, (int, float)):
+            continue
+        if isinstance(v, str):
+            s = v.strip()
+            if s == "":
+                normalized[k] = None
+            else:
+                normalized[k] = s
+    # Empty strings to None for optional text fields
+    for k in ("item_name", "notes", "status"):
+        v = normalized.get(k)
+        if isinstance(v, str) and v.strip() == "":
+            normalized[k] = None
+    return normalized
 
 
 @router.get("/", response_model=SaleList)
@@ -197,16 +293,23 @@ def get_sale(sale_id: int, db: Session = Depends(get_db), current_user: User = D
 
 
 @router.put("/{sale_id}", response_model=SaleRead)
-def update_sale(
+async def update_sale(
     sale_id: int,
-    data: SaleUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     sale = db.query(Sale).filter(Sale.id == sale_id, Sale.owner_id == current_user.id).first()
     if not sale:
         raise HTTPException(status_code=404, detail="Sale not found")
-    update_payload = data.model_dump(exclude_unset=True)
+    payload_data, upload_file = await _parse_sale_update_request(request)
+    # Coerce common field types to avoid pydantic validation edge cases on multipart
+    payload_data = _normalize_update_payload_types(payload_data)
+    try:
+        parsed_data = SaleUpdate(**payload_data)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+    update_payload = parsed_data.model_dump(exclude_unset=True)
     if "type_id" in update_payload:
         new_type_id = update_payload["type_id"]
         if new_type_id is not None:
@@ -220,12 +323,36 @@ def update_sale(
         customer_obj = _get_accessible_customer(db, current_user, new_customer_id)
         if not customer_obj:
             raise HTTPException(status_code=404, detail="Customer not found")
+    new_image_url: str | None = None
+    # If client explicitly clears image_url (and no new upload), we should delete the previous image
+    remove_image_requested = (
+        upload_file is None and "image_url" in update_payload and update_payload.get("image_url") is None
+    )
+    previous_image_url: str | None = sale.image_url if (upload_file is not None or remove_image_requested) else None
+    if upload_file is not None:
+        if not upload_file.content_type or not upload_file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="仅支持图片格式上传")
+        file_bytes = await upload_file.read()
+        if not file_bytes:
+            raise HTTPException(status_code=400, detail="图片内容为空")
+        try:
+            new_image_url = uploader.upload(file_bytes, upload_file.filename)
+        except ImageUploadError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        update_payload["image_url"] = new_image_url
+
     update_payload = _apply_price_validation(update_payload, current_sale=sale)
     for k, v in update_payload.items():
         setattr(sale, k, v)
     db.add(sale)
     db.commit()
     db.refresh(sale)
+    # Best-effort cleanup: delete previous image if replaced or explicitly removed
+    if previous_image_url and ((new_image_url and previous_image_url != new_image_url) or remove_image_requested):
+        try:
+            uploader.delete(previous_image_url)
+        except ImageUploadError as exc:  # pragma: no cover - best effort cleanup
+            logger.warning("Failed to delete old sale image %s: %s", previous_image_url, exc)
     return sale
 
 

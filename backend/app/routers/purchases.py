@@ -1,9 +1,14 @@
+import json
+import logging
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
+from pydantic import ValidationError
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from ..db import get_db
 from ..deps import get_current_user
@@ -12,7 +17,16 @@ from ..models.type import Type
 from ..models.customer import Customer
 from ..models.purchase import Purchase, PurchaseStatusEnum
 from ..models.user import User
-from ..schemas.purchase import PurchaseCreate, PurchaseList, PurchaseRead, PurchaseUpdate
+from ..schemas.purchase import (
+    PurchaseCreate,
+    PurchaseImageUploadResponse,
+    PurchaseList,
+    PurchaseRead,
+    PurchaseUpdate,
+)
+from ..services.image_uploader import ImageUploadError, uploader
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -70,6 +84,83 @@ def _get_accessible_customer(db: Session, current_user: User, customer_id: int) 
     return (
         db.query(Customer).filter(Customer.id == customer_id, _customer_access_filter(current_user)).first()
     )
+
+
+async def _parse_purchase_update_request(request: Request) -> tuple[dict[str, Any], UploadFile | None]:
+    content_type = request.headers.get("content-type", "").lower()
+    if "multipart/form-data" in content_type:
+        form_data = await request.form()
+        payload: dict[str, Any] = {}
+        image_file: UploadFile | None = None
+        for candidate_key in ("image_file", "file", "image"):
+            candidate = form_data.get(candidate_key)
+            if isinstance(candidate, StarletteUploadFile):
+                image_file = candidate
+                break
+        for key, value in form_data.multi_items():
+            if key in {"image_file", "file", "image"} and isinstance(value, StarletteUploadFile):
+                continue
+            if key == "data" and isinstance(value, str):
+                stripped = value.strip()
+                if not stripped:
+                    continue
+                try:
+                    decoded = json.loads(stripped)
+                except json.JSONDecodeError as exc:  # pragma: no cover - invalid payload
+                    raise HTTPException(status_code=400, detail="Invalid data payload") from exc
+                if not isinstance(decoded, dict):
+                    raise HTTPException(status_code=400, detail="Invalid data payload")
+                payload.update(decoded)
+                continue
+            if isinstance(value, str) and value == "":
+                continue
+            payload[key] = value
+        return payload, image_file
+
+    body = await request.body()
+    if not body:
+        return {}, None
+    try:
+        decoded_body = json.loads(body)
+    except json.JSONDecodeError as exc:  # pragma: no cover - invalid json
+        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+    if not isinstance(decoded_body, dict):
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+    return decoded_body, None
+
+
+def _normalize_purchase_update_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    if not payload:
+        return payload
+    normalized = dict(payload)
+    d = normalized.get("date")
+    if isinstance(d, str) and d.strip():
+        try:
+            normalized["date"] = date.fromisoformat(d.strip())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD") from exc
+    for key in ("items_count", "customer_id", "type_id"):
+        value = normalized.get(key)
+        if isinstance(value, str) and value.strip():
+            try:
+                normalized[key] = int(value)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid integer value for {key}") from exc
+    for key in ("unit_price", "total_price"):
+        value = normalized.get(key)
+        if isinstance(value, (int, float)):
+            continue
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped == "":
+                normalized[key] = None
+            else:
+                normalized[key] = stripped
+    for key in ("item_name", "notes", "status", "image_url"):
+        value = normalized.get(key)
+        if isinstance(value, str) and value.strip() == "":
+            normalized[key] = None
+    return normalized
 
 
 @router.get("/", response_model=PurchaseList)
@@ -186,6 +277,21 @@ def create_purchase(
     return purchase
 
 
+@router.post("/images", response_model=PurchaseImageUploadResponse)
+async def upload_purchase_image(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="仅支持图片格式上传")
+    data = await file.read()
+    try:
+        url = uploader.upload(data, file.filename)
+    except ImageUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PurchaseImageUploadResponse(url=url)
+
+
 @router.get("/{purchase_id}", response_model=PurchaseRead)
 def get_purchase(
     purchase_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
@@ -199,9 +305,9 @@ def get_purchase(
 
 
 @router.put("/{purchase_id}", response_model=PurchaseRead)
-def update_purchase(
+async def update_purchase(
     purchase_id: int,
-    data: PurchaseUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -210,7 +316,15 @@ def update_purchase(
     )
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
-    update_payload = data.model_dump(exclude_unset=True)
+
+    payload_data, upload_file = await _parse_purchase_update_request(request)
+    payload_data = _normalize_purchase_update_payload(payload_data)
+    try:
+        parsed_data = PurchaseUpdate(**payload_data)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+    update_payload = parsed_data.model_dump(exclude_unset=True)
+
     if "type_id" in update_payload:
         new_type_id = update_payload["type_id"]
         if new_type_id is not None:
@@ -224,12 +338,38 @@ def update_purchase(
         customer_obj = _get_accessible_customer(db, current_user, new_customer_id)
         if not customer_obj:
             raise HTTPException(status_code=404, detail="Customer not found")
+
+    new_image_url: str | None = None
+    remove_image_requested = (
+        upload_file is None and "image_url" in update_payload and update_payload.get("image_url") is None
+    )
+    previous_image_url: str | None = (
+        purchase.image_url if (upload_file is not None or remove_image_requested) else None
+    )
+    if upload_file is not None:
+        if not upload_file.content_type or not upload_file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="仅支持图片格式上传")
+        file_bytes = await upload_file.read()
+        if not file_bytes:
+            raise HTTPException(status_code=400, detail="图片内容为空")
+        try:
+            new_image_url = uploader.upload(file_bytes, upload_file.filename)
+        except ImageUploadError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        update_payload["image_url"] = new_image_url
+
     update_payload = _apply_price_validation(update_payload, current_purchase=purchase)
     for k, v in update_payload.items():
         setattr(purchase, k, v)
     db.add(purchase)
     db.commit()
     db.refresh(purchase)
+
+    if previous_image_url and ((new_image_url and previous_image_url != new_image_url) or remove_image_requested):
+        try:
+            uploader.delete(previous_image_url)
+        except ImageUploadError as exc:  # pragma: no cover - best effort cleanup
+            logger.warning("Failed to delete old purchase image %s: %s", previous_image_url, exc)
     return purchase
 
 

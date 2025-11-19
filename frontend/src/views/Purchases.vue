@@ -130,6 +130,23 @@
             <el-table-column label="金额" width="110">
               <template #default="{ row }">¥ {{ formatAmount(row.total_price) }}</template>
             </el-table-column>
+            <el-table-column label="图片" width="160">
+              <template #default="{ row }">
+                <div class="purchases__image-cell">
+                  <el-image v-if="row.image_url" :src="row.image_url" class="purchases__image-thumb" fit="cover"
+                    :preview-src-list="[row.image_url]" />
+                  <div v-else class="purchases__image-placeholder">无</div>
+                  <el-upload class="purchases__image-upload" accept="image/*" :limit="1" :show-file-list="false"
+                    :http-request="(options) => handleRowImageUpload(options, row)"
+                    :on-exceed="(files) => handleRowImageExceed(files, row)">
+                    <el-button type="info" plain size="small" :loading="!!rowImageUploading[row.id]"
+                      :disabled="!!rowImageUploading[row.id]">
+                      上传/修改
+                    </el-button>
+                  </el-upload>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column label="状态" width="110">
               <template #default="{ row }">
                 <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
@@ -138,12 +155,13 @@
             <el-table-column label="备注">
               <template #default="{ row }">{{ row.notes || '—' }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="120" fixed="right">
+            <el-table-column label="操作" width="160" fixed="right">
               <template #default="{ row }">
+                <el-button type="warning" link size="small" @click="openEditDialog(row)">修改</el-button>
                 <el-popconfirm title="确认删除该采购记录？" confirm-button-text="删除" cancel-button-text="取消"
                   @confirm="removePurchase(row.id)">
                   <template #reference>
-                    <el-button type="danger" text size="small">删除</el-button>
+                    <el-button type="danger" link size="small">删除</el-button>
                   </template>
                 </el-popconfirm>
               </template>
@@ -193,6 +211,16 @@
             <el-radio-button :value="'received'">已收货</el-radio-button>
           </el-radio-group>
         </el-form-item>
+        <el-form-item label="采购图片">
+          <el-upload class="purchases__uploader" list-type="picture-card" accept="image/*" :limit="1"
+            :file-list="formImageList" :auto-upload="false" :on-change="handleFormImageChange"
+            :on-remove="handleFormImageRemove" :on-exceed="handleFormImageExceed"
+            :on-preview="handlePictureCardPreview">
+            <el-icon>
+              <Plus />
+            </el-icon>
+          </el-upload>
+        </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="记录更多信息" />
         </el-form-item>
@@ -204,12 +232,18 @@
         </el-space>
       </template>
     </el-dialog>
+    <el-dialog v-model="previewVisible" title="预览" width="560px">
+      <img v-if="previewImageUrl" :src="previewImageUrl" style="width: 100%; display: block;" />
+      <template #footer>
+        <el-button @click="previewVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </AppShell>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 
 import AppShell from '../components/AppShell.vue'
@@ -225,8 +259,14 @@ const loading = ref(false)
 const saving = ref(false)
 
 const dialogVisible = ref(false)
+const isEditing = ref(false)
+const editingId = ref(null)
 const formRef = ref()
 const form = reactive(createDefaultForm())
+const formImageList = ref([])
+const formImageFile = ref(null)
+const previewVisible = ref(false)
+const previewImageUrl = ref('')
 const filters = reactive({
   keyword: '',
   customerId: null,
@@ -238,6 +278,7 @@ const filters = reactive({
   amountMax: null
 })
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
+const rowImageUploading = reactive({})
 
 const rules = {
   date: [{ required: true, message: '请选择采购日期', trigger: 'change' }],
@@ -262,7 +303,8 @@ function createDefaultForm() {
     unit_price: 0,
     total_price: 0,
     status: 'pending',
-    notes: ''
+    notes: '',
+    image_url: null
   }
 }
 
@@ -272,6 +314,16 @@ watch(
     const normalizedCount = Number(count) || 0
     const normalizedPrice = Number(price) || 0
     form.total_price = Number((normalizedCount * normalizedPrice).toFixed(2))
+  },
+  { immediate: true }
+)
+
+watch(
+  () => form.image_url,
+  (url) => {
+    if (!formImageFile.value) {
+      formImageList.value = url ? [{ name: 'purchase-image', url }] : []
+    }
   },
   { immediate: true }
 )
@@ -330,8 +382,137 @@ function flattenCustomers(groups) {
   return flat
 }
 
+function validateImageFile(file) {
+  const isImage = file?.type?.startsWith('image/')
+  if (!isImage) {
+    ElMessage.error('仅支持图片文件')
+    return false
+  }
+  return true
+}
+
+function handleFormImageChange(uploadFile) {
+  const file = uploadFile?.raw || uploadFile
+  if (!validateImageFile(file)) return false
+  formImageFile.value = file
+  const name = file.name || 'purchase-image'
+  const url = URL.createObjectURL(file)
+  formImageList.value = [{ name, url }]
+  return false
+}
+
+function handleFormImageRemove() {
+  ElMessageBox.confirm('确认删除当前图片？', '提示', { type: 'warning' })
+    .then(async () => {
+      try {
+        const removingPersisted = isEditing.value && editingId.value && !!form.image_url && !formImageFile.value
+        if (removingPersisted) {
+          await api.put(`/purchases/${editingId.value}`, { image_url: null })
+          form.image_url = null
+        }
+        formImageFile.value = null
+        formImageList.value = []
+        ElMessage.success('图片已删除')
+      } catch (error) {
+        const message = error?.response?.data?.detail || error?.message || '删除失败'
+        ElMessage.error(message)
+        if (form.image_url) {
+          formImageList.value = [{ name: 'purchase-image', url: form.image_url }]
+        } else if (formImageFile.value) {
+          const url = URL.createObjectURL(formImageFile.value)
+          formImageList.value = [{ name: formImageFile.value.name || 'purchase-image', url }]
+        }
+      }
+    })
+    .catch(() => {
+      if (form.image_url) {
+        formImageList.value = [{ name: 'purchase-image', url: form.image_url }]
+      } else if (formImageFile.value) {
+        const url = URL.createObjectURL(formImageFile.value)
+        formImageList.value = [{ name: formImageFile.value.name || 'purchase-image', url }]
+      } else {
+        formImageList.value = []
+      }
+    })
+}
+
+function handleFormImageExceed(files) {
+  const file = Array.isArray(files) ? files[0] : files
+  if (!file) return
+  if (!validateImageFile(file)) return
+  formImageFile.value = null
+  formImageList.value = []
+  const name = file.name || 'purchase-image'
+  const url = URL.createObjectURL(file)
+  formImageFile.value = file
+  formImageList.value = [{ name, url }]
+}
+
+async function handleRowImageUpload({ file, onError, onSuccess }, row) {
+  if (!validateImageFile(file)) {
+    onError?.(new Error('invalid file'))
+    return
+  }
+  rowImageUploading[row.id] = true
+  try {
+    const formData = new FormData()
+    formData.append('image_file', file)
+    auth.ensureInterceptors()
+    const { data } = await api.put(`/purchases/${row.id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    const url = data?.image_url || null
+    row.image_url = url
+    onSuccess?.({ url })
+    ElMessage.success('图片已更新')
+  } catch (error) {
+    onError?.(error)
+    const message = error?.response?.data?.detail || error?.message || '上传失败'
+    ElMessage.error(message)
+  } finally {
+    rowImageUploading[row.id] = false
+  }
+}
+
+function handleRowImageExceed(files, row) {
+  const file = Array.isArray(files) ? files[0] : files
+  if (!file) return
+  handleRowImageUpload({ file }, row)
+}
+
+function handlePictureCardPreview(file) {
+  const url = file?.url
+  if (!url) return
+  previewImageUrl.value = url
+  previewVisible.value = true
+}
+
 function openCreateDialog() {
   Object.assign(form, createDefaultForm())
+  isEditing.value = false
+  editingId.value = null
+  formImageFile.value = null
+  formImageList.value = []
+  dialogVisible.value = true
+}
+
+function openEditDialog(row) {
+  Object.assign(form, {
+    date: row.date,
+    customer_id: row.customer_id ?? null,
+    type_id: row.type_id ?? null,
+    item_name: row.item_name || '',
+    items_count: Number(row.items_count ?? 1),
+    unit_price: Number(row.unit_price ?? 0),
+    total_price: Number(row.total_price ?? 0),
+    status: row.status || 'pending',
+    notes: row.notes || '',
+    image_url: row.image_url || null,
+  })
+  isEditing.value = true
+  editingId.value = row.id
+  formImageFile.value = null
+  formImageList.value = row.image_url ? [{ name: 'purchase-image', url: row.image_url }] : []
   dialogVisible.value = true
 }
 
@@ -402,14 +583,43 @@ async function submitForm() {
     else payload.type_id = Number(payload.type_id)
     if (!payload.item_name) payload.item_name = null
     if (!payload.notes) payload.notes = null
-    await api.post('/purchases/', payload)
-    ElMessage.success('创建采购成功')
+    if (isEditing.value && editingId.value) {
+      if (formImageFile.value) {
+        const formData = new FormData()
+        formData.append('data', JSON.stringify(payload))
+        formData.append('image_file', formImageFile.value)
+        auth.ensureInterceptors()
+        await api.put(`/purchases/${editingId.value}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+      } else {
+        await api.put(`/purchases/${editingId.value}`, payload)
+      }
+      ElMessage.success('修改采购成功')
+    } else {
+      const { data: created } = await api.post('/purchases/', payload)
+      const newId = created?.id
+      if (newId && formImageFile.value) {
+        const formData = new FormData()
+        formData.append('image_file', formImageFile.value)
+        auth.ensureInterceptors()
+        await api.put(`/purchases/${newId}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+      }
+      ElMessage.success('创建采购成功')
+    }
     dialogVisible.value = false
+    isEditing.value = false
+    editingId.value = null
+    formImageFile.value = null
+    formImageList.value = []
     pagination.page = 1
     await loadPurchases()
   } catch (error) {
     if (error?.name === 'ElFormError') return
-    const message = error?.response?.data?.detail || error?.message || '创建采购失败'
+    const message =
+      error?.response?.data?.detail || error?.message || (isEditing.value ? '修改采购失败' : '创建采购失败')
     ElMessage.error(message)
   } finally {
     saving.value = false

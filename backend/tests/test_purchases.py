@@ -171,3 +171,69 @@ def test_purchase_validations_for_foreign_references(client, auth_headers, attac
     )
     assert reassign_customer_resp.status_code == 200
     assert reassign_customer_resp.json()["customer_id"] == customer_id
+
+
+def test_update_purchase_image_via_multipart_triggers_delete(client, auth_headers, attach_vendor, monkeypatch):
+    headers = auth_headers("owner@example.com")
+    company_resp = client.post(
+        "/companies/",
+        json={"name": "SupplyChain", "address": "Logistics Park"},
+        headers=headers,
+    )
+    assert company_resp.status_code == 200, company_resp.text
+    company_id = company_resp.json()["id"]
+
+    customer_resp = client.post(
+        "/customers/",
+        json={"name": "Warehouse", "company_id": company_id},
+        headers=headers,
+    )
+    assert customer_resp.status_code == 200, customer_resp.text
+    customer_id = customer_resp.json()["id"]
+    attach_vendor("owner@example.com", customer_id)
+
+    purchase_resp = client.post(
+        "/purchases/",
+        json={
+            "date": "2024-08-01",
+            "customer_id": customer_id,
+            "items_count": 2,
+            "unit_price": "50.00",
+            "total_price": "100.00",
+            "status": "pending",
+        },
+        headers=headers,
+    )
+    assert purchase_resp.status_code == 200, purchase_resp.text
+    purchase_id = purchase_resp.json()["id"]
+
+    old_url = "https://cdn.example.com/purchases-images/old-image.jpg"
+    set_old_resp = client.put(
+        f"/purchases/{purchase_id}",
+        json={"image_url": old_url},
+        headers=headers,
+    )
+    assert set_old_resp.status_code == 200, set_old_resp.text
+
+    uploads: list[str] = []
+    deletes: list[str] = []
+
+    def fake_upload(data: bytes, filename: str | None = None) -> str:  # pragma: no cover - test helper
+        uploads.append(filename or "")
+        return "https://cdn.example.com/purchases-images/new-image.jpg"
+
+    def fake_delete(url: str | None) -> None:  # pragma: no cover - test helper
+        deletes.append(url or "")
+
+    monkeypatch.setattr("app.routers.purchases.uploader.upload", fake_upload)
+    monkeypatch.setattr("app.routers.purchases.uploader.delete", fake_delete)
+
+    update_resp = client.put(
+        f"/purchases/{purchase_id}",
+        headers=headers,
+        files={"image_file": ("new.jpg", b"fake-bytes", "image/jpeg")},
+    )
+    assert update_resp.status_code == 200, update_resp.text
+    assert update_resp.json()["image_url"] == "https://cdn.example.com/purchases-images/new-image.jpg"
+    assert uploads, "Expected uploader.upload to be called"
+    assert deletes == [old_url]

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+import datetime as dt
 from decimal import Decimal
 from typing import Optional
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class SaleBase(BaseModel):
-    date: date
+    date: dt.date
     type_id: int | None = None
     customer_id: int
     item_name: str | None = None
@@ -25,7 +25,7 @@ class SaleCreate(SaleBase):
 
 
 class SaleUpdate(BaseModel):
-    date: Optional[date] = None
+    date: dt.date | None = None
     type_id: Optional[int] = None
     customer_id: Optional[int] = None
     item_name: Optional[str] = None
