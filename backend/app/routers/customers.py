@@ -6,6 +6,7 @@ from ..db import get_db
 from ..deps import get_current_user
 from ..models.company import Company
 from ..models.customer import Customer
+from ..models.department import Department
 from ..models.user import User
 
 from ..schemas.customer import CustomerCreate, CustomerGroup, CustomerRead, CustomerUpdate
@@ -16,11 +17,21 @@ router = APIRouter()
 def _customer_access_filter(current_user: User):
     return Customer.vendors.any(User.id == current_user.id)
 
+
+def _get_accessible_department(db: Session, current_user: User, department_id: int) -> Department | None:
+    return (
+        db.query(Department)
+        .join(Company)
+        .filter(Department.id == department_id, Company.vendors.any(User.id == current_user.id))
+        .first()
+    )
+
 @router.get("/", response_model=list[CustomerGroup])
 def list_customers(
     skip: int = 0,
     limit: int = 100,
     company_id: int | None = None,
+    department_id: int | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -28,6 +39,8 @@ def list_customers(
     query = db.query(Customer).filter(access_filter)
     if company_id is not None:
         query = query.filter(Customer.company_id == company_id)
+    if department_id is not None:
+        query = query.filter(Customer.department_id == department_id)
     order_expr = case((Customer.company_id == 0, 0), else_=1)
     customers = (
         query.order_by(order_expr, Customer.company_id, Customer.id)
@@ -70,6 +83,11 @@ def create_customer(
         )
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
+    department_id = payload.get("department_id")
+    if department_id is not None:
+        department_obj = _get_accessible_department(db, current_user, department_id)
+        if not department_obj:
+            raise HTTPException(status_code=404, detail="Department not found")
     customer = Customer(**payload)
     customer.vendors.append(current_user)
     db.add(customer)
@@ -133,6 +151,13 @@ def update_customer(
             )
             if not company:
                 raise HTTPException(status_code=404, detail="Company not found")
+
+    if "department_id" in payload:
+        new_department_id = payload["department_id"]
+        if new_department_id is not None:
+            department_obj = _get_accessible_department(db, current_user, new_department_id)
+            if not department_obj:
+                raise HTTPException(status_code=404, detail="Department not found")
 
     for key, value in payload.items():
         setattr(customer, key, value)

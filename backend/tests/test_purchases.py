@@ -8,14 +8,14 @@ def test_purchase_crud_flow_with_owned_relations(client, auth_headers, attach_ve
     assert company_resp.status_code == 200, company_resp.text
     company_id = company_resp.json()["id"]
 
-    customer_resp = client.post(
-        "/customers/",
+    supplier_resp = client.post(
+        "/suppliers/",
         json={"name": "Alice", "company_id": company_id, "email": "alice@example.com"},
         headers=headers,
     )
-    assert customer_resp.status_code == 200, customer_resp.text
-    customer_id = customer_resp.json()["id"]
-    attach_vendor("owner@example.com", customer_id)
+    assert supplier_resp.status_code == 200, supplier_resp.text
+    supplier_id = supplier_resp.json()["id"]
+    attach_vendor("owner@example.com", supplier_id, "supplier")
 
     type_resp = client.post("/types/", json={"name": "Office Supplies"}, headers=headers)
     assert type_resp.status_code == 201, type_resp.text
@@ -24,7 +24,7 @@ def test_purchase_crud_flow_with_owned_relations(client, auth_headers, attach_ve
     payload = {
         "date": "2024-01-01",
         "type_id": type_id,
-        "customer_id": customer_id,
+        "supplier_id": supplier_id,
         "item_name": "Printer Paper",
         "items_count": 10,
         "unit_price": "19.99",
@@ -37,7 +37,7 @@ def test_purchase_crud_flow_with_owned_relations(client, auth_headers, attach_ve
     purchase = create_resp.json()
     purchase_id = purchase["id"]
     assert purchase["type_id"] == type_id
-    assert purchase["customer_id"] == customer_id
+    assert purchase["supplier_id"] == supplier_id
     assert "company_id" not in purchase
 
     list_resp = client.get("/purchases/", headers=headers)
@@ -59,6 +59,14 @@ def test_purchase_crud_flow_with_owned_relations(client, auth_headers, attach_ve
     assert update_resp.json()["status"] == "received"
     assert update_resp.json()["items_count"] == 12
     assert update_resp.json()["total_price"] == "239.88"
+
+    clear_supplier = client.put(
+        f"/purchases/{purchase_id}",
+        json={"supplier_id": None},
+        headers=headers,
+    )
+    assert clear_supplier.status_code == 200
+    assert clear_supplier.json()["supplier_id"] is None
 
     delete_resp = client.delete(f"/purchases/{purchase_id}", headers=headers)
     assert delete_resp.status_code == 200
@@ -83,24 +91,24 @@ def test_purchase_validations_for_foreign_references(client, auth_headers, attac
     assert company_create.status_code == 200, company_create.text
     company_id = company_create.json()["id"]
 
-    owner_customer_resp = client.post(
-        "/customers/",
+    owner_supplier_resp = client.post(
+        "/suppliers/",
         json={"name": "Primary Supplier", "company_id": company_id},
         headers=owner_headers,
     )
-    assert owner_customer_resp.status_code == 200, owner_customer_resp.text
-    owner_customer_id = owner_customer_resp.json()["id"]
-    attach_vendor("owner@example.com", owner_customer_id)
+    assert owner_supplier_resp.status_code == 200, owner_supplier_resp.text
+    owner_supplier_id = owner_supplier_resp.json()["id"]
+    attach_vendor("owner@example.com", owner_supplier_id, "supplier")
 
     other_headers = auth_headers("other@example.com")
-    other_customer_resp = client.post(
-        "/customers/",
+    other_supplier_resp = client.post(
+        "/suppliers/",
         json={"name": "Other Supplier", "company_id": 0},
         headers=other_headers,
     )
-    assert other_customer_resp.status_code == 200, other_customer_resp.text
-    other_customer_id = other_customer_resp.json()["id"]
-    assert other_customer_resp.json()["company_id"] == 0
+    assert other_supplier_resp.status_code == 200, other_supplier_resp.text
+    other_supplier_id = other_supplier_resp.json()["id"]
+    assert other_supplier_resp.json()["company_id"] == 0
 
     payload_type = {
         "date": "2024-02-01",
@@ -109,7 +117,7 @@ def test_purchase_validations_for_foreign_references(client, auth_headers, attac
         "unit_price": "15.00",
         "total_price": "75.00",
         "status": "pending",
-        "customer_id": other_customer_id,
+        "supplier_id": other_supplier_id,
     }
     type_resp = client.post("/purchases/", json=payload_type, headers=other_headers)
     assert type_resp.status_code == 404
@@ -124,7 +132,7 @@ def test_purchase_validations_for_foreign_references(client, auth_headers, attac
             "unit_price": "20.00",
             "total_price": "60.00",
             "status": "ordered",
-            "customer_id": owner_customer_id,
+            "supplier_id": owner_supplier_id,
         },
         headers=owner_headers,
     )
@@ -146,31 +154,31 @@ def test_purchase_validations_for_foreign_references(client, auth_headers, attac
     assert update_type_resp.status_code == 404
     assert update_type_resp.json()["detail"] == "Type not found"
 
-    # Attempt to mismatch company when a customer already linked
-    attach_customer_resp = client.put(
+    # Attempt to mismatch company when a supplier already linked
+    attach_supplier_resp = client.put(
         f"/purchases/{purchase_id}",
-        json={"customer_id": other_customer_id},
+        json={"supplier_id": other_supplier_id},
         headers=owner_headers,
     )
-    assert attach_customer_resp.status_code == 404
-    assert attach_customer_resp.json()["detail"] == "Customer not found"
+    assert attach_supplier_resp.status_code == 404
+    assert attach_supplier_resp.json()["detail"] == "Supplier not found"
 
-    customer_resp = client.post(
-        "/customers/",
+    supplier_resp = client.post(
+        "/suppliers/",
         json={"name": "Bob", "company_id": company_id},
         headers=owner_headers,
     )
-    assert customer_resp.status_code == 200, customer_resp.text
-    customer_id = customer_resp.json()["id"]
-    attach_vendor("owner@example.com", customer_id)
+    assert supplier_resp.status_code == 200, supplier_resp.text
+    supplier_id = supplier_resp.json()["id"]
+    attach_vendor("owner@example.com", supplier_id, "supplier")
 
-    reassign_customer_resp = client.put(
+    reassign_supplier_resp = client.put(
         f"/purchases/{purchase_id}",
-        json={"customer_id": customer_id},
+        json={"supplier_id": supplier_id},
         headers=owner_headers,
     )
-    assert reassign_customer_resp.status_code == 200
-    assert reassign_customer_resp.json()["customer_id"] == customer_id
+    assert reassign_supplier_resp.status_code == 200
+    assert reassign_supplier_resp.json()["supplier_id"] == supplier_id
 
 
 def test_update_purchase_image_via_multipart_triggers_delete(client, auth_headers, attach_vendor, monkeypatch):
@@ -183,20 +191,20 @@ def test_update_purchase_image_via_multipart_triggers_delete(client, auth_header
     assert company_resp.status_code == 200, company_resp.text
     company_id = company_resp.json()["id"]
 
-    customer_resp = client.post(
-        "/customers/",
+    supplier_resp = client.post(
+        "/suppliers/",
         json={"name": "Warehouse", "company_id": company_id},
         headers=headers,
     )
-    assert customer_resp.status_code == 200, customer_resp.text
-    customer_id = customer_resp.json()["id"]
-    attach_vendor("owner@example.com", customer_id)
+    assert supplier_resp.status_code == 200, supplier_resp.text
+    supplier_id = supplier_resp.json()["id"]
+    attach_vendor("owner@example.com", supplier_id, "supplier")
 
     purchase_resp = client.post(
         "/purchases/",
         json={
             "date": "2024-08-01",
-            "customer_id": customer_id,
+            "supplier_id": supplier_id,
             "items_count": 2,
             "unit_price": "50.00",
             "total_price": "100.00",

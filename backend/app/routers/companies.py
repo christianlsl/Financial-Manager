@@ -5,6 +5,7 @@ from ..db import get_db
 from ..deps import get_current_user
 from ..models.company import Company
 from ..models.customer import Customer
+from ..models.supplier import Supplier
 from ..models.user import User
 from ..schemas.company import CompanyCreate, CompanyRead, CompanyUpdate
 
@@ -71,8 +72,9 @@ def delete_company(company_id: int, db: Session = Depends(get_db), current_user:
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     has_customers = db.query(Customer.id).filter(Customer.company_id == company_id).first()
-    if has_customers:
-        raise HTTPException(status_code=400, detail="Company has customers")
+    has_suppliers = db.query(Supplier.id).filter(Supplier.company_id == company_id).first()
+    if has_customers or has_suppliers:
+        raise HTTPException(status_code=400, detail="Company has linked contacts")
     db.delete(company)
     db.commit()
     return {"ok": True}

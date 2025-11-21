@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from . import db
 from .core.config import settings
-from .routers import auth, purchases, sales, companies, types, customers
+from .routers import auth, purchases, sales, companies, types, customers, suppliers, departments, statistics
 
 
 @asynccontextmanager
@@ -43,7 +43,10 @@ app.include_router(purchases.router, prefix="/purchases", tags=["purchases"])
 app.include_router(sales.router, prefix="/sales", tags=["sales"])
 app.include_router(companies.router, prefix="/companies", tags=["companies"])
 app.include_router(customers.router, prefix="/customers", tags=["customers"])
+app.include_router(suppliers.router, prefix="/suppliers", tags=["suppliers"])
+app.include_router(departments.router, prefix="/departments", tags=["departments"])
 app.include_router(types.router, prefix="/types", tags=["types"])
+app.include_router(statistics.router, prefix="/statistics", tags=["statistics"])
 
 
 if __name__ == "__main__":

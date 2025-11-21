@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 class SaleBase(BaseModel):
     date: dt.date
     type_id: int | None = None
-    customer_id: int
+    customer_id: int | None = None
     item_name: str | None = None
     items_count: int
     unit_price: Decimal
@@ -37,10 +37,16 @@ class SaleUpdate(BaseModel):
     image_url: Optional[str] = None
 
 
+
+from .department import DepartmentRead
+
 class SaleRead(SaleBase):
     id: int
+    customer_department_id: int | None = None
+    customer_department: DepartmentRead | None = None
     # Pydantic v2 style config
     model_config = ConfigDict(from_attributes=True)
+
 
 
 class SaleList(BaseModel):

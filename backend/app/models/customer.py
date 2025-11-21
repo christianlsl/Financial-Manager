@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship, foreign
 
 from ..db import Base
@@ -14,6 +14,7 @@ class Customer(Base):
     email = Column(String(255), nullable=True)
     position = Column(String(255), nullable=True)
     company_id = Column(Integer, nullable=False, default=0, index=True)
+    department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
 
     company = relationship(
         "Company",
@@ -21,6 +22,6 @@ class Customer(Base):
         foreign_keys=[company_id],
         viewonly=True,
     )
-    purchases = relationship("Purchase", back_populates="customer")
+    department = relationship("Department", foreign_keys=[department_id], back_populates="members")
     sales = relationship("Sale", back_populates="customer")
     vendors = relationship("User", secondary=user_customer_table, back_populates="customers")

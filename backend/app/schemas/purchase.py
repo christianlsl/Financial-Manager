@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 class PurchaseBase(BaseModel):
     date: dt.date
     type_id: int | None = None
-    customer_id: int
+    supplier_id: int | None = None
     item_name: str | None = None
     items_count: int
     unit_price: Decimal
@@ -27,7 +27,7 @@ class PurchaseCreate(PurchaseBase):
 class PurchaseUpdate(BaseModel):
     date: dt.date | None = None
     type_id: Optional[int] = None
-    customer_id: Optional[int] = None
+    supplier_id: Optional[int] = None
     item_name: Optional[str] = None
     items_count: Optional[int] = None
     unit_price: Optional[Decimal] = None

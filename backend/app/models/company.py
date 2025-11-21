@@ -23,3 +23,5 @@ class Company(Base):
         foreign_keys="Customer.company_id",
         viewonly=True,
     )
+    departments = relationship("Department", back_populates="company", cascade="all, delete-orphan")
+    # linked_departments removed with partner companies feature.

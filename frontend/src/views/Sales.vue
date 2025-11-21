@@ -41,22 +41,38 @@
             </el-col>
           </el-row>
 
-          <!-- 第二排：客户，公司 -->
+          <!-- 第二排：客户，公司，部门 -->
           <el-row :gutter="16" class="filters-row">
-            <el-col :xs="24" :sm="12">
-              <el-form-item label="客户">
-                <el-select v-model="filters.customerId" placeholder="全部客户" clearable filterable style="width: 100%"
-                  @change="handleFilterChange">
-                  <el-option v-for="customer in customers" :key="customer.id" :label="customerLabel(customer)"
-                    :value="customer.id" />
-                </el-select>
+            <el-col :xs="24" :sm="8" :md="8">
+              <el-form-item label="客户类型">
+                <el-radio-group v-model="filters.customerType" @change="handleCustomerTypeChange">
+                  <el-radio-button :value="'company'">公司客户</el-radio-button>
+                  <el-radio-button :value="'personal'">个人客户</el-radio-button>
+                </el-radio-group>
               </el-form-item>
             </el-col>
-            <el-col :xs="24" :sm="12">
+            <el-col v-if="filters.customerType === 'company'" :xs="24" :sm="8" :md="6">
               <el-form-item label="公司">
                 <el-select v-model="filters.companyId" placeholder="全部公司" clearable filterable style="width: 100%"
                   @change="handleFilterChange">
                   <el-option v-for="company in companies" :key="company.id" :label="company.name" :value="company.id" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col v-if="filters.customerType === 'company'" :xs="24" :sm="8" :md="4">
+              <el-form-item label="部门">
+                <el-select v-model="filters.departmentId" placeholder="全部部门" clearable filterable style="width: 100%"
+                  @change="handleFilterChange">
+                  <el-option v-for="dept in departmentOptions" :key="dept.id" :label="dept.name" :value="dept.id" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :sm="8" :md="6">
+              <el-form-item label="客户">
+                <el-select v-model="filters.customerId" placeholder="全部客户" clearable filterable style="width: 100%"
+                  @change="handleFilterChange">
+                  <el-option v-for="customer in filterCustomerOptions" :key="customer.id"
+                    :label="customerLabel(customer)" :value="customer.id" />
                 </el-select>
               </el-form-item>
             </el-col>
@@ -65,7 +81,7 @@
           <!-- 第三排：类型，状态 -->
           <el-row :gutter="16" class="filters-row">
             <el-col :xs="24" :sm="12">
-              <el-form-item label="类型">
+              <el-form-item label="物料类型">
                 <el-select v-model="filters.typeId" placeholder="全部类型" clearable filterable style="width: 100%"
                   @change="handleFilterChange">
                   <el-option v-for="type in types" :key="type.id" :label="type.name" :value="type.id" />
@@ -73,7 +89,7 @@
               </el-form-item>
             </el-col>
             <el-col :xs="24" :sm="12">
-              <el-form-item label="状态">
+              <el-form-item label="货品状态">
                 <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 100%"
                   @change="handleFilterChange">
                   <el-option v-for="(option, key) in statusOptions" :key="key" :label="option.label" :value="key" />
@@ -118,6 +134,11 @@
             </el-table-column>
             <el-table-column label="公司" width="160">
               <template #default="{ row }">{{ customerCompanyName(row.customer_id) }}</template>
+            </el-table-column>
+            <el-table-column label="部门" width="140">
+              <template #default="{ row }">
+                {{ row.customer_department?.name || '—' }}
+              </template>
             </el-table-column>
             <el-table-column label="客户" width="180">
               <template #default="{ row }">{{ customerName(row.customer_id) }}</template>
@@ -183,9 +204,28 @@
           <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期"
             style="width: 100%" />
         </el-form-item>
-        <el-form-item label="关联客户" prop="customer_id">
-          <el-select v-model="form.customer_id" placeholder="选择客户" filterable>
-            <el-option v-for="customer in customers" :key="customer.id" :label="customerLabel(customer)"
+        <el-form-item label="客户类型">
+          <el-radio-group v-model="isStrangerCustomer">
+            <el-radio-button :value="false">已有客户</el-radio-button>
+            <el-radio-button :value="true">陌生客户</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="!isStrangerCustomer" label="公司" prop="company_id">
+          <el-select v-model="form.company_id" placeholder="选择公司" filterable clearable style="width: 100%">
+            <el-option :key="0" :label="'个人客户'" :value="0" />
+            <el-option v-for="company in companies" :key="company.id" :label="company.name" :value="company.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="!isStrangerCustomer" label="部门" prop="department_id">
+          <el-select v-model="form.department_id" placeholder="选择部门" clearable filterable style="width: 100%"
+            :disabled="!showDepartmentSelect">
+            <el-option v-for="dept in formDepartmentOptions" :key="dept.id" :label="dept.name" :value="dept.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="!isStrangerCustomer" label="关联客户" prop="customer_id">
+          <el-select v-model="form.customer_id" placeholder="选择客户" filterable clearable style="width: 100%"
+            :disabled="!form.company_id && form.company_id !== 0">
+            <el-option v-for="customer in formCustomerOptions" :key="customer.id" :label="customerLabel(customer)"
               :value="customer.id" />
           </el-select>
         </el-form-item>
@@ -257,6 +297,7 @@ const sales = ref([])
 const companies = ref([])
 const customers = ref([])
 const types = ref([])
+const departments = ref([])
 const loading = ref(false)
 const saving = ref(false)
 
@@ -269,10 +310,13 @@ const formImageList = ref([])
 const formImageFile = ref(null)
 const previewVisible = ref(false)
 const previewImageUrl = ref('')
+const isStrangerCustomer = ref(false)
 const filters = reactive({
+  customerType: 'company',
   keyword: '',
   customerId: null,
   companyId: null,
+  departmentId: null,
   typeId: null,
   status: null,
   dateRange: [],
@@ -284,28 +328,88 @@ const rowImageUploading = reactive({})
 
 const rules = {
   date: [{ required: true, message: '请选择销售日期', trigger: 'change' }],
-  customer_id: [{ required: true, message: '请选择客户', trigger: 'change' }],
+  company_id: [{
+    required: function () { return !isStrangerCustomer.value },
+    message: '请选择公司',
+    trigger: 'change'
+  }],
+  department_id: [{
+    // required: function () { return !isStrangerCustomer.value && form.company_id && form.company_id !== 0 },
+    message: '请选择部门',
+    trigger: 'change'
+  }],
+  customer_id: [{
+    required: function () { return !isStrangerCustomer.value },
+    message: '请选择客户',
+    trigger: 'change'
+  }],
   item_name: [{ required: true, message: '请输入项目内容', trigger: 'blur' }],
   items_count: [{ required: true, message: '请输入数量', trigger: 'blur' }],
   unit_price: [{ required: true, message: '请输入单价', trigger: 'blur' }]
 }
 
 const statusOptions = computed(() => ({
+  paid: { label: '已支付', type: 'success' },
   draft: { label: '已下单', type: 'warning' },
-  sent: { label: '已送货', type: 'info' },
-  paid: { label: '已支付', type: 'success' }
+  sent: { label: '已送货', type: 'info' }
 }))
+
+const departmentOptions = computed(() => {
+  if (filters.companyId) {
+    return departments.value.filter((d) => d.company_id === filters.companyId)
+  }
+  return {}
+})
+
+const formDepartmentOptions = computed(() => {
+  if (form.company_id && form.company_id !== 0) {
+    return departments.value.filter((d) => d.company_id === form.company_id)
+  }
+  return []
+})
+
+const formCustomerOptions = computed(() => {
+  if (form.company_id === 0) {
+    // 个人客户：无部门，所有company_id为0的客户
+    return customers.value.filter((c) => c.company_id === 0)
+  } else if (form.company_id && form.department_id) {
+    // 选了公司和部门，筛选该公司该部门下的客户
+    return customers.value.filter((c) => c.company_id === form.company_id && c.department_id === form.department_id)
+  } else if (form.company_id) {
+    // 只选了公司，显示该公司下所有客户
+    return customers.value.filter((c) => c.company_id === form.company_id)
+  }
+  return []
+})
+
+const filterCustomerOptions = computed(() => {
+  if (filters.customerType === 'personal') {
+    return customers.value.filter((c) => c.company_id === 0)
+  } else if (filters.customerType === 'company' && filters.companyId && filters.departmentId) {
+    return customers.value.filter((c) => c.company_id === filters.companyId && c.department_id === filters.departmentId)
+  } else if (filters.customerType === 'company' && filters.companyId) {
+    return customers.value.filter((c) => c.company_id === filters.companyId)
+  }
+  return customers.value
+})
+
+const showDepartmentSelect = computed(() => {
+  // 个人客户不显示部门
+  return form.company_id && form.company_id !== 0 && formDepartmentOptions.value.length > 0
+})
 
 function createDefaultForm() {
   return {
     date: new Date().toISOString().slice(0, 10),
+    company_id: null,
+    department_id: null,
     customer_id: null,
     type_id: null,
     item_name: '',
     items_count: 1,
     unit_price: 0,
     total_price: 0,
-    status: 'draft',
+    status: 'paid',
     notes: '',
     image_url: null
   }
@@ -330,6 +434,42 @@ watch(
     }
   },
   { immediate: true }
+)
+
+watch(
+  () => filters.companyId,
+  (companyId) => {
+    if (companyId) {
+      filters.departmentId = null
+      filters.customerId = null
+    }
+  }
+)
+
+watch(
+  () => form.company_id,
+  (companyId) => {
+    form.department_id = null
+    form.customer_id = null
+  }
+)
+
+watch(
+  () => form.department_id,
+  (departmentId) => {
+    form.customer_id = null
+  }
+)
+
+watch(
+  () => isStrangerCustomer.value,
+  (value) => {
+    if (value) {
+      form.company_id = null
+      form.department_id = null
+      form.customer_id = null
+    }
+  }
 )
 
 function formatAmount(value) {
@@ -357,14 +497,12 @@ function typeName(id) {
 
 function customerLabel(customer) {
   if (!customer) return '—'
-  const label = customer.name || `客户 #${customer.id}`
-  const company = companyName(customer.company_id)
-  return company && company !== '—' ? `${label}（${company}）` : label
+  return customer.name || `客户 #${customer.id}`
 }
 
 function customerName(id) {
   const customer = customers.value.find((item) => item.id === id)
-  return customer ? customerLabel(customer) : `客户 #${id}`
+  return customer ? customer.name : (id ? `客户 #${id}` : '陌生客户')
 }
 
 function customerCompanyName(id) {
@@ -390,12 +528,19 @@ function openCreateDialog() {
   Object.assign(form, createDefaultForm())
   isEditing.value = false
   editingId.value = null
+  isStrangerCustomer.value = false
   dialogVisible.value = true
 }
 
 function openEditDialog(row) {
+  // Find customer to get department and company
+  const customer = customers.value.find((c) => c.id === row.customer_id)
+  const department_id = customer?.department_id ?? null
+  const company_id = customer?.company_id ?? null
   Object.assign(form, {
     date: row.date,
+    company_id,
+    department_id,
     customer_id: row.customer_id ?? null,
     type_id: row.type_id ?? null,
     item_name: row.item_name || '',
@@ -408,6 +553,7 @@ function openEditDialog(row) {
   })
   isEditing.value = true
   editingId.value = row.id
+  isStrangerCustomer.value = false
   dialogVisible.value = true
 }
 
@@ -539,6 +685,15 @@ async function loadLookups() {
   }
 }
 
+async function loadDepartments() {
+  try {
+    const { data } = await api.get('/departments/', { params: { limit: 300 } })
+    departments.value = data || []
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || error?.message || '加载部门失败')
+  }
+}
+
 async function loadSales() {
   loading.value = true
   try {
@@ -547,9 +702,21 @@ async function loadSales() {
       skip: (pagination.page - 1) * pagination.pageSize,
       limit: pagination.pageSize
     }
-    if (filters.customerId) params.customer_id = filters.customerId
+    
+    // 处理客户类型过滤
+    if (filters.customerType === 'personal') {
+      // 个人客户：获取所有个人客户（company_id=0）和陌生客户（customer_id=null）的销售记录
+      // 由于API不支持同时查询两种条件，我们需要获取所有记录然后在前端过滤
+      // 这里我们可以不传customer_id，让API返回所有记录，然后在前端过滤
+      // 或者我们可以添加一个特殊的参数来标识这是个人客户查询
+      // 暂时不传customer_id，让API返回所有记录
+    } else if (filters.customerType === 'company') {
+      // 公司客户：根据公司和部门过滤
+      if (filters.customerId) params.customer_id = filters.customerId
+      if (filters.companyId) params.company_id = filters.companyId
+    }
+    
     if (filters.typeId) params.type_id = filters.typeId
-    if (filters.companyId) params.company_id = filters.companyId
     if (filters.status) params.status = filters.status
     if (Array.isArray(filters.dateRange) && filters.dateRange.length === 2) {
       params.date_from = filters.dateRange[0]
@@ -567,7 +734,20 @@ async function loadSales() {
       params.amount_max = maxAmount
     }
     const { data } = await api.get('/sales/', { params })
-    const items = Array.isArray(data?.items) ? data.items : []
+    let items = Array.isArray(data?.items) ? data.items : []
+    
+    // 如果是个人客户类型，在前端过滤出个人客户和陌生客户的记录
+    if (filters.customerType === 'personal') {
+      items = items.filter(item => {
+        // 陌生客户：customer_id为null
+        if (item.customer_id === null) return true
+        
+        // 个人客户：需要检查customer的company_id是否为0
+        const customer = customers.value.find(c => c.id === item.customer_id)
+        return customer && customer.company_id === 0
+      })
+    }
+    
     sales.value = items
     pagination.total = Number(data?.total ?? items.length)
   } catch (error) {
@@ -584,9 +764,18 @@ async function submitForm() {
     await formRef.value.validate()
     saving.value = true
     const payload = { ...form }
-    if (payload.customer_id !== null && payload.customer_id !== undefined) {
-      payload.customer_id = Number(payload.customer_id)
+
+    // 如果是陌生客户，设置customer_id为null
+    if (isStrangerCustomer.value) {
+      payload.customer_id = null
+      payload.company_id = null
+      payload.department_id = null
+    } else {
+      if (payload.customer_id !== null && payload.customer_id !== undefined) {
+        payload.customer_id = Number(payload.customer_id)
+      }
     }
+
     if (!payload.type_id) payload.type_id = null
     else payload.type_id = Number(payload.type_id)
     if (!payload.item_name) payload.item_name = null
@@ -666,9 +855,17 @@ function handlePageSizeChange(size) {
   loadSales()
 }
 
+function handleCustomerTypeChange() {
+  filters.companyId = null
+  filters.departmentId = null
+  filters.customerId = null
+  handleFilterChange()
+}
+
 onMounted(async () => {
   auth.ensureInterceptors()
   await loadLookups()
+  await loadDepartments()
   await loadSales()
 })
 </script>

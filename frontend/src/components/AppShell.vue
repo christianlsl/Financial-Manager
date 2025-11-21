@@ -24,7 +24,7 @@
           </el-icon>
           <span>销售</span>
         </el-menu-item>
-        <el-menu-item index="/customers">
+        <el-menu-item index="/business">
           <el-icon>
             <Briefcase />
           </el-icon>
@@ -56,7 +56,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { Briefcase, Collection, Monitor, Setting, ShoppingCart, TrendCharts } from '@element-plus/icons-vue'
+import { Briefcase, Monitor, Setting, ShoppingCart, TrendCharts } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()

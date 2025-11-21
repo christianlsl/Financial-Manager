@@ -40,22 +40,14 @@
               </el-form-item>
             </el-col>
           </el-row>
-          <!-- 第二排：客户，公司 -->
+          <!-- 第二排：供应商，公司 -->
           <el-row :gutter="16" class="filters-row">
             <el-col :xs="24" :sm="12">
-              <el-form-item label="客户">
-                <el-select v-model="filters.customerId" placeholder="全部客户" clearable filterable style="width: 100%"
+              <el-form-item label="供应商">
+                <el-select v-model="filters.supplierId" placeholder="全部供应商" clearable filterable style="width: 100%"
                   @change="handleFilterChange">
-                  <el-option v-for="customer in customers" :key="customer.id" :label="customerLabel(customer)"
-                    :value="customer.id" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :xs="24" :sm="12">
-              <el-form-item label="公司">
-                <el-select v-model="filters.companyId" placeholder="全部公司" clearable filterable style="width: 100%"
-                  @change="handleFilterChange">
-                  <el-option v-for="company in companies" :key="company.id" :label="company.name" :value="company.id" />
+                  <el-option v-for="supplier in suppliers" :key="supplier.id" :label="supplierLabel(supplier)"
+                    :value="supplier.id" />
                 </el-select>
               </el-form-item>
             </el-col>
@@ -114,11 +106,8 @@
             <el-table-column label="项目">
               <template #default="{ row }">{{ row.item_name || '未填写' }}</template>
             </el-table-column>
-            <el-table-column label="公司" width="160">
-              <template #default="{ row }">{{ customerCompanyName(row.customer_id) }}</template>
-            </el-table-column>
-            <el-table-column label="客户" width="180">
-              <template #default="{ row }">{{ customerName(row.customer_id) }}</template>
+            <el-table-column label="供应商" width="180">
+              <template #default="{ row }">{{ supplierName(row.supplier_id) }}</template>
             </el-table-column>
             <el-table-column label="类型" width="140">
               <template #default="{ row }">{{ typeName(row.type_id) }}</template>
@@ -181,10 +170,10 @@
           <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期"
             style="width: 100%" />
         </el-form-item>
-        <el-form-item label="关联客户" prop="customer_id">
-          <el-select v-model="form.customer_id" placeholder="选择客户" filterable>
-            <el-option v-for="customer in customers" :key="customer.id" :label="customerLabel(customer)"
-              :value="customer.id" />
+        <el-form-item label="关联供应商" prop="supplier_id">
+          <el-select v-model="form.supplier_id" placeholder="选择供应商" filterable>
+            <el-option v-for="supplier in suppliers" :key="supplier.id" :label="supplierLabel(supplier)"
+              :value="supplier.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="采购类型" prop="type_id">
@@ -252,8 +241,7 @@ import { useAuthStore, api } from '../stores/auth'
 const auth = useAuthStore()
 
 const purchases = ref([])
-const companies = ref([])
-const customers = ref([])
+const suppliers = ref([])
 const types = ref([])
 const loading = ref(false)
 const saving = ref(false)
@@ -269,8 +257,7 @@ const previewVisible = ref(false)
 const previewImageUrl = ref('')
 const filters = reactive({
   keyword: '',
-  customerId: null,
-  companyId: null,
+  supplierId: null,
   typeId: null,
   status: null,
   dateRange: [],
@@ -282,7 +269,7 @@ const rowImageUploading = reactive({})
 
 const rules = {
   date: [{ required: true, message: '请选择采购日期', trigger: 'change' }],
-  customer_id: [{ required: true, message: '请选择客户', trigger: 'change' }],
+  supplier_id: [{ required: true, message: '请选择供应商', trigger: 'change' }],
   items_count: [{ required: true, message: '请输入数量', trigger: 'blur' }],
   unit_price: [{ required: true, message: '请输入单价', trigger: 'blur' }]
 }
@@ -296,7 +283,7 @@ const statusOptions = computed(() => ({
 function createDefaultForm() {
   return {
     date: new Date().toISOString().slice(0, 10),
-    customer_id: null,
+    supplier_id: null,
     type_id: null,
     item_name: '',
     items_count: 1,
@@ -340,47 +327,13 @@ function statusType(status) {
   return statusOptions.value[status]?.type || 'info'
 }
 
-function companyName(id) {
-  if (id === 0) return '个人客户'
-  if (id === null || id === undefined) return '—'
-  return companies.value.find((item) => item.id === id)?.name || '—'
-}
+
 
 function typeName(id) {
   if (!id) return '—'
   return types.value.find((item) => item.id === id)?.name || '—'
 }
 
-function customerLabel(customer) {
-  if (!customer) return '—'
-  const label = customer.name || `客户 #${customer.id}`
-  const company = companyName(customer.company_id)
-  return company && company !== '—' ? `${label}（${company}）` : label
-}
-
-function customerName(id) {
-  const customer = customers.value.find((item) => item.id === id)
-  return customer ? customerLabel(customer) : `客户 #${id}`
-}
-
-function customerCompanyName(id) {
-  const customer = customers.value.find((item) => item.id === id)
-  if (!customer) return '—'
-  return companyName(customer.company_id)
-}
-
-function flattenCustomers(groups) {
-  const flat = []
-  for (const group of groups || []) {
-    const fallbackCompanyId = typeof group?.company_id === 'number' ? group.company_id : 0
-    for (const customer of group?.customers || []) {
-      const resolvedCompanyId = typeof customer.company_id === 'number' ? customer.company_id : fallbackCompanyId
-      flat.push({ ...customer, company_id: resolvedCompanyId })
-    }
-  }
-  flat.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-CN'))
-  return flat
-}
 
 function validateImageFile(file) {
   const isImage = file?.type?.startsWith('image/')
@@ -499,7 +452,7 @@ function openCreateDialog() {
 function openEditDialog(row) {
   Object.assign(form, {
     date: row.date,
-    customer_id: row.customer_id ?? null,
+    supplier_id: row.supplier_id ?? null,
     type_id: row.type_id ?? null,
     item_name: row.item_name || '',
     items_count: Number(row.items_count ?? 1),
@@ -518,13 +471,11 @@ function openEditDialog(row) {
 
 async function loadLookups() {
   try {
-    const [{ data: companyData }, { data: customerGroups }, { data: typeData }] = await Promise.all([
-      api.get('/companies/', { params: { limit: 200 } }),
-      api.get('/customers/', { params: { limit: 300 } }),
+    const [{ data: supplierGroups }, { data: typeData }] = await Promise.all([
+      api.get('/suppliers/', { params: { limit: 300 } }),
       api.get('/types/', { params: { limit: 200 } })
     ])
-    companies.value = companyData || []
-    customers.value = flattenCustomers(customerGroups)
+    suppliers.value = supplierGroups || []
     types.value = typeData || []
   } catch (error) {
     const message = error?.response?.data?.detail || error?.message || '加载基础数据失败'
@@ -540,9 +491,8 @@ async function loadPurchases() {
       skip: (pagination.page - 1) * pagination.pageSize,
       limit: pagination.pageSize
     }
-    if (filters.customerId) params.customer_id = filters.customerId
+    if (filters.supplierId) params.supplier_id = filters.supplierId
     if (filters.typeId) params.type_id = filters.typeId
-    if (filters.companyId) params.company_id = filters.companyId
     if (filters.status) params.status = filters.status
     if (Array.isArray(filters.dateRange) && filters.dateRange.length === 2) {
       params.date_from = filters.dateRange[0]
@@ -576,8 +526,8 @@ async function submitForm() {
     await formRef.value.validate()
     saving.value = true
     const payload = { ...form }
-    if (payload.customer_id !== null && payload.customer_id !== undefined) {
-      payload.customer_id = Number(payload.customer_id)
+    if (payload.supplier_id !== null && payload.supplier_id !== undefined) {
+      payload.supplier_id = Number(payload.supplier_id)
     }
     if (!payload.type_id) payload.type_id = null
     else payload.type_id = Number(payload.type_id)
@@ -663,6 +613,16 @@ onMounted(async () => {
   await loadLookups()
   await loadPurchases()
 })
+
+function supplierLabel(supplier) {
+  if (!supplier) return '—'
+  return supplier.name || `供应商 #${supplier.id}`
+}
+
+function supplierName(id) {
+  const supplier = suppliers.value.find((item) => item.id === id)
+  return supplier ? supplierLabel(supplier) : `供应商 #${id}`
+}
 </script>
 
 <style scoped>

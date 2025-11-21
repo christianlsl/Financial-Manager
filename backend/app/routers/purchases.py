@@ -14,7 +14,7 @@ from ..db import get_db
 from ..deps import get_current_user
 from ..models.company import Company
 from ..models.type import Type
-from ..models.customer import Customer
+from ..models.supplier import Supplier
 from ..models.purchase import Purchase, PurchaseStatusEnum
 from ..models.user import User
 from ..schemas.purchase import (
@@ -76,13 +76,13 @@ def _apply_price_validation(payload: dict, current_purchase: Purchase | None = N
     return payload
 
 
-def _customer_access_filter(current_user: User):
-    return Customer.vendors.any(User.id == current_user.id)
+def _supplier_access_filter(current_user: User):
+    return Supplier.vendors.any(User.id == current_user.id)
 
 
-def _get_accessible_customer(db: Session, current_user: User, customer_id: int) -> Customer | None:
+def _get_accessible_supplier(db: Session, current_user: User, supplier_id: int) -> Supplier | None:
     return (
-        db.query(Customer).filter(Customer.id == customer_id, _customer_access_filter(current_user)).first()
+        db.query(Supplier).filter(Supplier.id == supplier_id, _supplier_access_filter(current_user)).first()
     )
 
 
@@ -139,7 +139,7 @@ def _normalize_purchase_update_payload(payload: dict[str, Any]) -> dict[str, Any
             normalized["date"] = date.fromisoformat(d.strip())
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD") from exc
-    for key in ("items_count", "customer_id", "type_id"):
+    for key in ("items_count", "supplier_id", "type_id"):
         value = normalized.get(key)
         if isinstance(value, str) and value.strip():
             try:
@@ -168,7 +168,7 @@ def list_purchases(
     skip: int = 0,
     limit: int = 100,
     type_id: int | None = None,
-    customer_id: int | None = None,
+    supplier_id: int | None = None,
     company_id: int | None = None,
     status: str | None = None,
     search: str | None = None,
@@ -181,20 +181,20 @@ def list_purchases(
 ):
     """List purchases with advanced filtering similar to sales."""
     query = db.query(Purchase).filter(Purchase.owner_id == current_user.id)
-    joined_customer = False
+    joined_supplier = False
     joined_company = False
 
-    def ensure_customer_join():
-        nonlocal query, joined_customer
-        if not joined_customer:
-            query = query.join(Customer)
-            joined_customer = True
+    def ensure_supplier_join():
+        nonlocal query, joined_supplier
+        if not joined_supplier:
+            query = query.join(Supplier)
+            joined_supplier = True
 
     def ensure_company_join():
         nonlocal query, joined_company
-        ensure_customer_join()
+        ensure_supplier_join()
         if not joined_company:
-            query = query.outerjoin(Company, Customer.company_id == Company.id)
+            query = query.outerjoin(Company, Supplier.company_id == Company.id)
             joined_company = True
 
     if status:
@@ -208,18 +208,18 @@ def list_purchases(
         query = query.filter(Purchase.status == normalized_status)
     if type_id is not None:
         query = query.filter(Purchase.type_id == type_id)
-    if customer_id is not None:
-        query = query.filter(Purchase.customer_id == customer_id)
+    if supplier_id is not None:
+        query = query.filter(Purchase.supplier_id == supplier_id)
     if company_id is not None:
-        ensure_customer_join()
-        query = query.filter(Customer.company_id == company_id)
+        ensure_supplier_join()
+        query = query.filter(Supplier.company_id == company_id)
     if search and search.strip():
         ensure_company_join()
         keyword = f"%{search.strip().lower()}%"
         query = query.filter(
             or_(
                 func.lower(func.coalesce(Purchase.item_name, "")).like(keyword),
-                func.lower(func.coalesce(Customer.name, "")).like(keyword),
+                func.lower(func.coalesce(Supplier.name, "")).like(keyword),
                 func.lower(func.coalesce(Company.name, "")).like(keyword),
             )
         )
@@ -265,11 +265,11 @@ def create_purchase(
         if not type_obj:
             raise HTTPException(status_code=404, detail="Type not found")
     payload = _apply_price_validation(data.model_dump())
-    if payload.get("customer_id") is None:
-        raise HTTPException(status_code=400, detail="Customer is required")
-    customer_obj = _get_accessible_customer(db, current_user, payload["customer_id"])
-    if not customer_obj:
-        raise HTTPException(status_code=404, detail="Customer not found")
+    supplier_id = payload.get("supplier_id")
+    if supplier_id is not None:
+        supplier_obj = _get_accessible_supplier(db, current_user, supplier_id)
+        if not supplier_obj:
+            raise HTTPException(status_code=404, detail="Supplier not found")
     purchase = Purchase(**payload, owner_id=current_user.id)
     db.add(purchase)
     db.commit()
@@ -331,13 +331,12 @@ async def update_purchase(
             type_obj = db.query(Type).filter(Type.id == new_type_id, Type.owner_id == current_user.id).first()
             if not type_obj:
                 raise HTTPException(status_code=404, detail="Type not found")
-    if "customer_id" in update_payload:
-        new_customer_id = update_payload["customer_id"]
-        if new_customer_id is None:
-            raise HTTPException(status_code=400, detail="Customer is required")
-        customer_obj = _get_accessible_customer(db, current_user, new_customer_id)
-        if not customer_obj:
-            raise HTTPException(status_code=404, detail="Customer not found")
+    if "supplier_id" in update_payload:
+        new_supplier_id = update_payload["supplier_id"]
+        if new_supplier_id is not None:
+            supplier_obj = _get_accessible_supplier(db, current_user, new_supplier_id)
+            if not supplier_obj:
+                raise HTTPException(status_code=404, detail="Supplier not found")
 
     new_image_url: str | None = None
     remove_image_requested = (

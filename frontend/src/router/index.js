@@ -6,7 +6,7 @@ const Register = () => import('../views/Register.vue')
 const Dashboard = () => import('../views/Dashboard.vue')
 const Purchases = () => import('../views/Purchases.vue')
 const Sales = () => import('../views/Sales.vue')
-const Customers = () => import('../views/Customers.vue')
+const Business = () => import('../views/Business.vue')
 const Settings = () => import('../views/Settings.vue')
 
 const routes = [
@@ -16,7 +16,7 @@ const routes = [
     { path: '/dashboard', component: Dashboard, meta: { requiresAuth: true } },
     { path: '/purchases', component: Purchases, meta: { requiresAuth: true } },
     { path: '/sales', component: Sales, meta: { requiresAuth: true } },
-    { path: '/customers', component: Customers, meta: { requiresAuth: true } },
+    { path: '/business', component: Business, meta: { requiresAuth: true } },
     { path: '/settings', component: Settings, meta: { requiresAuth: true } },
 ]
 

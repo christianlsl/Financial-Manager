@@ -13,6 +13,7 @@ from app.core import config
 import app.db as app_db
 from app.main import app
 from app.models.customer import Customer
+from app.models.supplier import Supplier
 from app.models.user import User
 
 
@@ -88,16 +89,21 @@ def auth_headers(client: TestClient) -> Callable[[str, str], Dict[str, str]]:
 
 @pytest.fixture()
 def attach_vendor():
-    def _attach(user_email: str, customer_id: int) -> None:
+    def _attach(user_email: str, entity_id: int, entity_type: str = "customer") -> None:
         db = app_db.SessionLocal()
         try:
-            customer = db.query(Customer).filter(Customer.id == customer_id).first()
+            if entity_type == "customer":
+                entity = db.query(Customer).filter(Customer.id == entity_id).first()
+            elif entity_type == "supplier":
+                entity = db.query(Supplier).filter(Supplier.id == entity_id).first()
+            else:
+                raise RuntimeError(f"Unsupported entity_type {entity_type}")
             user = db.query(User).filter(User.email == user_email).first()
-            if not customer or not user:
-                raise RuntimeError("Customer or user not found when attaching vendor")
-            if user not in customer.vendors:
-                customer.vendors.append(user)
-                db.add(customer)
+            if not entity or not user:
+                raise RuntimeError("Entity or user not found when attaching vendor")
+            if user not in entity.vendors:
+                entity.vendors.append(user)
+                db.add(entity)
                 db.commit()
         finally:
             db.close()

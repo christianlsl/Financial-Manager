@@ -4,6 +4,7 @@ from sqlalchemy.orm import relationship
 from ..db import Base
 from .user_customer import user_customer_table
 from .user_company import user_company_table
+from .user_supplier import user_supplier_table
 
 
 class User(Base):
@@ -26,6 +27,12 @@ class User(Base):
         "Customer",
         secondary=user_customer_table,
         back_populates="vendors",
+    )
+
+    suppliers = relationship(
+        "Supplier",
+        secondary=user_supplier_table,
+        back_populates="customers",
     )
 
     purchases = relationship("Purchase", back_populates="owner", cascade="all, delete-orphan")

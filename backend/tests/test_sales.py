@@ -17,6 +17,14 @@ def test_sale_crud_flow_with_owned_relations(client, auth_headers, attach_vendor
     customer_id = customer_resp.json()["id"]
     attach_vendor("owner@example.com", customer_id)
 
+    department_resp = client.post(
+        "/departments/",
+        json={"name": "North Sales", "company_id": company_id, "leader_id": customer_id},
+        headers=headers,
+    )
+    assert department_resp.status_code == 200, department_resp.text
+    department_id = department_resp.json()["id"]
+
     type_resp = client.post("/types/", json={"name": "Electronics"}, headers=headers)
     assert type_resp.status_code == 201, type_resp.text
     type_id = type_resp.json()["id"]
@@ -63,6 +71,14 @@ def test_sale_crud_flow_with_owned_relations(client, auth_headers, attach_vendor
     assert update_resp.json()["total_price"] == "1123.75"
     assert update_resp.json()["image_url"] == image_url
 
+    clear_customer = client.put(
+        f"/sales/{sale_id}",
+        json={"customer_id": None},
+        headers=headers,
+    )
+    assert clear_customer.status_code == 200
+    assert clear_customer.json()["customer_id"] is None
+
     delete_resp = client.delete(f"/sales/{sale_id}", headers=headers)
     assert delete_resp.status_code == 200
     assert delete_resp.json()["ok"] is True
@@ -94,6 +110,14 @@ def test_sale_validations_for_foreign_references(client, auth_headers, attach_ve
     assert owner_customer_resp.status_code == 200, owner_customer_resp.text
     owner_customer_id = owner_customer_resp.json()["id"]
     attach_vendor("owner@example.com", owner_customer_id)
+
+    department_resp = client.post(
+        "/departments/",
+        json={"name": "Owner Direct", "company_id": company_id},
+        headers=owner_headers,
+    )
+    assert department_resp.status_code == 200, department_resp.text
+    department_id = department_resp.json()["id"]
 
     other_headers = auth_headers("other@example.com")
     other_customer_resp = client.post(

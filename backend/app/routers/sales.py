@@ -245,7 +245,21 @@ def list_sales(
 
     total = query.count()
     items = query.order_by(Sale.date.desc(), Sale.id.desc()).offset(skip).limit(limit).all()
-    return SaleList(items=items, total=total)
+
+    # Enrich each sale with customer department info
+    enriched = []
+    from ..schemas.department import DepartmentRead
+    for sale in items:
+        customer = sale.customer
+        dept = getattr(customer, "department", None) if customer else None
+        enriched.append(
+            SaleRead(
+                **sale.__dict__,
+                customer_department_id=getattr(customer, "department_id", None) if customer else None,
+                customer_department=DepartmentRead.model_validate(dept) if dept else None,
+            )
+        )
+    return SaleList(items=enriched, total=total)
 
 
 @router.post("/", response_model=SaleRead)
@@ -257,11 +271,11 @@ def create_sale(
         if not type_obj:
             raise HTTPException(status_code=404, detail="Type not found")
     payload = _apply_price_validation(data.model_dump())
-    if payload.get("customer_id") is None:
-        raise HTTPException(status_code=400, detail="Customer is required")
-    customer_obj = _get_accessible_customer(db, current_user, payload["customer_id"])
-    if not customer_obj:
-        raise HTTPException(status_code=404, detail="Customer not found")
+    customer_id = payload.get("customer_id")
+    if customer_id is not None:
+        customer_obj = _get_accessible_customer(db, current_user, customer_id)
+        if not customer_obj:
+            raise HTTPException(status_code=404, detail="Customer not found")
     sale = Sale(**payload, owner_id=current_user.id)
     db.add(sale)
     db.commit()
@@ -318,11 +332,10 @@ async def update_sale(
                 raise HTTPException(status_code=404, detail="Type not found")
     if "customer_id" in update_payload:
         new_customer_id = update_payload["customer_id"]
-        if new_customer_id is None:
-            raise HTTPException(status_code=400, detail="Customer is required")
-        customer_obj = _get_accessible_customer(db, current_user, new_customer_id)
-        if not customer_obj:
-            raise HTTPException(status_code=404, detail="Customer not found")
+        if new_customer_id is not None:
+            customer_obj = _get_accessible_customer(db, current_user, new_customer_id)
+            if not customer_obj:
+                raise HTTPException(status_code=404, detail="Customer not found")
     new_image_url: str | None = None
     # If client explicitly clears image_url (and no new upload), we should delete the previous image
     remove_image_requested = (
