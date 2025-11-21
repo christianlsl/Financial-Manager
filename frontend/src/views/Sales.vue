@@ -13,6 +13,12 @@
             </el-icon>
             刷新
           </el-button>
+          <el-button @click="downloadCsv" plain>
+            <el-icon>
+              <Download />
+            </el-icon>
+            下载表格
+          </el-button>
           <el-button type="primary" @click="openCreateDialog">
             <el-icon>
               <Plus />
@@ -192,7 +198,7 @@
           </el-table>
         </div>
         <el-pagination v-if="pagination.total > 0" class="sales__pagination" :total="pagination.total"
-          :page-sizes="[10, 20, 50]" :page-size="pagination.pageSize" :current-page="pagination.page"
+          :page-sizes="[10, 20, 50, 100]" :page-size="pagination.pageSize" :current-page="pagination.page"
           layout="total, sizes, prev, pager, next" @current-change="handlePageChange"
           @size-change="handlePageSizeChange" />
       </el-card>
@@ -284,9 +290,59 @@
 </template>
 
 <script setup>
+
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { Plus, Refresh, Search, Download } from '@element-plus/icons-vue'
+import * as XLSX from 'xlsx'
+// CSV导出相关
+async function downloadCsv() {
+  if (!sales.value.length) {
+    ElMessage.warning('暂无数据可导出')
+    return
+  }
+  const headers = [
+    '日期',
+    '项目',
+    '公司',
+    '部门',
+    '客户',
+    '类型',
+    '数量',
+    '单价',
+    '金额',
+    '图片链接',
+    '状态',
+    '备注'
+  ]
+  const rows = sales.value.map(row => ({
+    '日期': row.date || '',
+    '项目': row.item_name || '',
+    '公司': customerCompanyName(row.customer_id),
+    '部门': row.customer_department?.name || '—',
+    '客户': customerName(row.customer_id),
+    '类型': typeName(row.type_id),
+    '数量': row.items_count ?? '',
+    '单价': row.unit_price !== undefined && row.unit_price !== null ? formatAmount(row.unit_price) : '',
+    '金额': row.total_price !== undefined && row.total_price !== null ? formatAmount(row.total_price) : '',
+    '图片链接': row.image_url || '',
+    '状态': statusLabel(row.status),
+    '备注': row.notes || ''
+  }))
+  // 使用SheetJS生成xlsx
+  const ws = XLSX.utils.json_to_sheet(rows, { header: headers })
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, '销售表')
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+  const url = URL.createObjectURL(new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', `销售表格_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
 
 import AppShell from '../components/AppShell.vue'
 import { useAuthStore, api } from '../stores/auth'
@@ -702,7 +758,7 @@ async function loadSales() {
       skip: (pagination.page - 1) * pagination.pageSize,
       limit: pagination.pageSize
     }
-    
+
     // 处理客户类型过滤
     if (filters.customerType === 'personal') {
       // 个人客户：获取所有个人客户（company_id=0）和陌生客户（customer_id=null）的销售记录
@@ -715,7 +771,7 @@ async function loadSales() {
       if (filters.customerId) params.customer_id = filters.customerId
       if (filters.companyId) params.company_id = filters.companyId
     }
-    
+
     if (filters.typeId) params.type_id = filters.typeId
     if (filters.status) params.status = filters.status
     if (Array.isArray(filters.dateRange) && filters.dateRange.length === 2) {
@@ -735,19 +791,19 @@ async function loadSales() {
     }
     const { data } = await api.get('/sales/', { params })
     let items = Array.isArray(data?.items) ? data.items : []
-    
+
     // 如果是个人客户类型，在前端过滤出个人客户和陌生客户的记录
     if (filters.customerType === 'personal') {
       items = items.filter(item => {
         // 陌生客户：customer_id为null
         if (item.customer_id === null) return true
-        
+
         // 个人客户：需要检查customer的company_id是否为0
         const customer = customers.value.find(c => c.id === item.customer_id)
         return customer && customer.company_id === 0
       })
     }
-    
+
     sales.value = items
     pagination.total = Number(data?.total ?? items.length)
   } catch (error) {
