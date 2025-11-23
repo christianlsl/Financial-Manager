@@ -21,7 +21,12 @@ Reset and Initialize Database:
 
 ```bash
 cd ./backend
-uv run -m app.utils.manage_db
+
+# Reset database and insert sample data (default)
+uv run -m app.utils.manage_db --action reset_and_seed
+
+# Or reset database only (no sample data)
+uv run -m app.utils.manage_db --action reset
 ```
 
 Run development server:
