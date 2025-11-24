@@ -36,7 +36,11 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
     # Decrypt required encrypted password
     try:
         password_plain = decrypt_password(user_in.enc_password)
-    except Exception:
+    except Exception as e:
+        # 添加详细的错误日志
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Password decryption failed: {str(e)}")
         raise HTTPException(status_code=400, detail="Invalid encrypted password")
     user = User(
         email=user_in.email, hashed_password=get_password_hash(password_plain), company_name=company_name
@@ -89,7 +93,7 @@ def change_password(
 
 @router.get("/pubkey")
 def get_pubkey():
-    return {"alg": "RSA-OAEP-256", "pem": get_public_key_pem()}
+    return {"alg": "RSA-PKCS1v15", "pem": get_public_key_pem()}
 
 
 @router.put("/update-profile")

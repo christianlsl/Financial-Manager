@@ -15,3 +15,6 @@ node_modules/
 .pytest_cache/
 .coverage
 htmlcov/
+
+*.db
+backend/financial_manager.db

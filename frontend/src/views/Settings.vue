@@ -191,7 +191,18 @@ async function changePassword() {
   try {
     await pwdFormRef.value.validate()
     savingPwd.value = true
-    await api.post('/auth/change-password', { current_password: pwdForm.current, new_password: pwdForm.newPwd })
+    
+    // 尝试使用加密的密码
+    const authStore = useAuthStore()
+    const encCurrentPassword = authStore.encryptPassword(pwdForm.current)
+    const encNewPassword = authStore.encryptPassword(pwdForm.newPwd)
+    
+    // 准备请求数据
+    const payload = encCurrentPassword && encNewPassword 
+      ? { enc_current_password: encCurrentPassword, enc_new_password: encNewPassword }
+      : { current_password: pwdForm.current, new_password: pwdForm.newPwd }
+    
+    await api.post('/auth/change-password', payload)
     ElMessage.success('密码已更新')
     resetPwdForm()
     pwdDialogVisible.value = false

@@ -17,15 +17,15 @@
       <el-card shadow="hover" class="dashboard__metric">
         <el-row :gutter="18">
           <el-col :xs="24" :md="8">
-            <el-statistic title="当月采购总额" :value="statistics.monthly.purchase_total" precision="2" prefix="¥">
+            <el-statistic title="当月采购总额" :value="statistics.monthly.purchase_total" :precision="2" prefix="¥">
             </el-statistic>
           </el-col>
           <el-col :xs="24" :md="8">
-            <el-statistic title="当月销售总额" :value="statistics.monthly.sale_total" precision="2" prefix="¥">
+            <el-statistic title="当月销售总额" :value="statistics.monthly.sale_total" :precision="2" prefix="¥">
             </el-statistic>
           </el-col>
           <el-col :xs="24" :md="8">
-            <el-statistic title="当月利润" :value="statistics.monthly.profit" precision="2" prefix="¥"
+            <el-statistic title="当月利润" :value="statistics.monthly.profit" :precision="2" prefix="¥"
               :value-style="{ color: statistics.monthly.profit >= 0 ? '#67c23a' : '#f56c6c' }">
             </el-statistic>
           </el-col>
@@ -35,15 +35,15 @@
       <el-card shadow="hover" class="dashboard__metric">
         <el-row :gutter="18">
           <el-col :xs="24" :md="6">
-            <el-statistic title="年度采购总额" :value="statistics.yearly.purchase_total" precision="2" prefix="¥">
+            <el-statistic title="年度采购总额" :value="statistics.yearly.purchase_total" :precision="2" prefix="¥">
             </el-statistic>
           </el-col>
           <el-col :xs="24" :md="6">
-            <el-statistic title="年度销售总额" :value="statistics.yearly.sale_total" precision="2" prefix="¥">
+            <el-statistic title="年度销售总额" :value="statistics.yearly.sale_total" :precision="2" prefix="¥">
             </el-statistic>
           </el-col>
           <el-col :xs="24" :md="6">
-            <el-statistic title="年度利润" :value="statistics.yearly.profit" precision="2" prefix="¥"
+            <el-statistic title="年度利润" :value="statistics.yearly.profit" :precision="2" prefix="¥"
               :value-style="{ color: statistics.yearly.profit >= 0 ? '#67c23a' : '#f56c6c' }">
             </el-statistic>
           </el-col>
@@ -151,7 +151,7 @@ const loadingSales = ref(false)
 
 const profitRate = computed(() => {
   if (statistics.value.yearly.sale_total === 0) return 0
-  return ((statistics.value.yearly.profit / statistics.value.yearly.sale_total) * 100).toFixed(2)
+  return parseFloat(((statistics.value.yearly.profit / statistics.value.yearly.sale_total) * 100).toFixed(2))
 })
 
 const recentPurchases = computed(() => purchases.value.slice(0, 5))
@@ -227,9 +227,22 @@ async function loadData() {
       return (group.customers || []).map((c) => ({ ...c, company_id: typeof c.company_id === 'number' ? c.company_id : groupCompanyId }))
     })
 
-    // 更新统计数据
+    // 更新统计数据并确保数值类型正确
     if (statisticsData) {
-      statistics.value = statisticsData
+      // 递归转换对象中的字符串数字为Number类型
+      const convertNumbers = (obj) => {
+        if (typeof obj === 'object' && obj !== null) {
+          Object.keys(obj).forEach(key => {
+            if (typeof obj[key] === 'string' && !isNaN(parseFloat(obj[key])) && isFinite(obj[key])) {
+              obj[key] = parseFloat(obj[key]);
+            } else if (typeof obj[key] === 'object') {
+              convertNumbers(obj[key]);
+            }
+          });
+        }
+        return obj;
+      };
+      statistics.value = convertNumbers(statisticsData);
     }
   } catch (error) {
     const message = error?.response?.data?.detail || error?.message || '加载数据失败'

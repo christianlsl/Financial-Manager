@@ -8,6 +8,7 @@ frontend:
   # Allowed origins for CORS
   origins:
     - http://localhost:5173
+    - http://47.100.89.197
 
 backend:
   # Security and token settings

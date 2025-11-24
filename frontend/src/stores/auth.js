@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
+import JSEncrypt from 'jsencrypt'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:9910'
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 export const api = axios.create({ baseURL: API_BASE })
 let interceptorsAttached = false
@@ -13,24 +14,21 @@ export const useAuthStore = defineStore('auth', {
         loading: false,
         error: null,
         pubkeyPem: null,
-        pubkeyKey: null,
     }),
     getters: {
         isAuthenticated: (state) => !!state.token,
         authHeaders: (state) => state.token ? { Authorization: `Bearer ${state.token}` } : {},
     },
     actions: {
-        async ensureCrypto() {
-            if (this.pubkeyKey) return
+        async ensureCrypto(forceRefresh = false) {
+            if (this.pubkeyPem && !forceRefresh) return
             try {
                 const r = await api.get('/auth/pubkey')
                 this.pubkeyPem = r.data?.pem
-                if (this.pubkeyPem) {
-                    this.pubkeyKey = await importRsaPublicKey(this.pubkeyPem)
-                }
             } catch (e) {
-                // If fetching/importing key fails, we'll fall back to plaintext
-                this.pubkeyKey = null
+                // If fetching key fails, we'll fall back to plaintext
+                console.error('Failed to fetch public key:', e)
+                this.pubkeyPem = null
             }
         },
         ensureInterceptors() {
@@ -62,21 +60,36 @@ export const useAuthStore = defineStore('auth', {
             })
             interceptorsAttached = true
         },
+        // 使用jsencrypt加密密码
+        encryptPassword(password) {
+            if (!this.pubkeyPem) {
+                return null
+            }
+            try {
+                const encrypt = new JSEncrypt()
+                encrypt.setPublicKey(this.pubkeyPem)
+                return encrypt.encrypt(password)
+            } catch (e) {
+                console.error('Failed to encrypt password:', e)
+                return null
+            }
+        },
         async login(email, password) {
             this.loading = true
             this.error = null
             try {
                 this.ensureInterceptors()
-                await this.ensureCrypto()
-                let payload = { email, password }
-                if (this.pubkeyKey && window.crypto?.subtle) {
-                    try {
-                        const enc_password = await rsaEncryptToBase64(this.pubkeyKey, password)
-                        payload = { email, enc_password }
-                    } catch (_) {
-                        // fall back to plaintext
-                    }
+                // 强制刷新公钥，确保使用最新的密钥
+                await this.ensureCrypto(true)
+                
+                let payload = { email, password } // 默认使用明文
+                
+                // 尝试使用jsencrypt加密密码
+                const enc_password = this.encryptPassword(password)
+                if (enc_password) {
+                    payload = { email, enc_password }
                 }
+                
                 const r = await api.post(`/auth/login`, payload)
                 this.token = r.data.access_token
                 this.email = email
@@ -94,16 +107,17 @@ export const useAuthStore = defineStore('auth', {
             this.error = null
             try {
                 this.ensureInterceptors()
-                await this.ensureCrypto()
-                let payload = { email, password, company_name: companyName }
-                if (this.pubkeyKey && window.crypto?.subtle) {
-                    try {
-                        const enc_password = await rsaEncryptToBase64(this.pubkeyKey, password)
-                        payload = { email, enc_password, company_name: companyName }
-                    } catch (_) {
-                        // fall back to plaintext
-                    }
+                // 强制刷新公钥，确保使用最新的密钥
+                await this.ensureCrypto(true)
+                
+                let payload = { email, password, company_name: companyName } // 默认使用明文
+                
+                // 尝试使用jsencrypt加密密码
+                const enc_password = this.encryptPassword(password)
+                if (enc_password) {
+                    payload = { email, enc_password, company_name: companyName }
                 }
+                
                 await api.post(`/auth/register`, payload)
                 await this.login(email, password)
             } catch (e) {
@@ -121,34 +135,3 @@ export const useAuthStore = defineStore('auth', {
         }
     }
 })
-
-// --- Crypto helpers (Web Crypto API: RSA-OAEP-256) ---
-function pemToArrayBuffer(pem) {
-    const b64 = pem.replace(/-----BEGIN PUBLIC KEY-----/g, '')
-        .replace(/-----END PUBLIC KEY-----/g, '')
-        .replace(/\s+/g, '')
-    const raw = atob(b64)
-    const arr = new Uint8Array(raw.length)
-    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i)
-    return arr.buffer
-}
-
-async function importRsaPublicKey(pem) {
-    const spki = pemToArrayBuffer(pem)
-    return await window.crypto.subtle.importKey(
-        'spki',
-        spki,
-        { name: 'RSA-OAEP', hash: 'SHA-256' },
-        false,
-        ['encrypt']
-    )
-}
-
-async function rsaEncryptToBase64(publicKey, text) {
-    const data = new TextEncoder().encode(text)
-    const buf = await window.crypto.subtle.encrypt({ name: 'RSA-OAEP' }, publicKey, data)
-    const bytes = new Uint8Array(buf)
-    let binary = ''
-    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
-    return btoa(binary)
-}

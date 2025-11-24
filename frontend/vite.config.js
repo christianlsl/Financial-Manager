@@ -4,7 +4,7 @@ import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
     plugins: [vue()],
-    base: './', // 使用相对路径
+    base: '/',
     resolve: {
         alias: {
             '@': path.resolve(__dirname, 'src')
@@ -12,7 +12,14 @@ export default defineConfig({
     },
     server: {
         port: 5173,
-        host: '0.0.0.0'
+        host: '0.0.0.0',
+        proxy: {
+            '/api': {
+                target: 'http://127.0.0.1:9910',
+                changeOrigin: true,
+                secure: false
+            }
+        }
     },
     build: {
         assetsDir: 'assets', // 确保资源文件放在 assets 目录

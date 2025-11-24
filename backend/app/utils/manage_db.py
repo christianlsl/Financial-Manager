@@ -7,6 +7,11 @@ from decimal import Decimal
 from ..core.config import settings
 from ..db import Base, engine, SessionLocal
 from ..core.security import get_password_hash
+from ..core.crypto import get_public_key_pem, decrypt_password
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import hashes
+import base64
 
 # Import models so they are registered with Base metadata
 from ..models import company  # noqa: F401
@@ -35,6 +40,26 @@ def reset_sqlite_db() -> None:
     os.chmod(db_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP)
 
 
+def encrypt_password_for_db(password: str) -> str:
+    """模拟前端加密过程，用于数据库初始化"""
+    # 获取公钥
+    public_key_pem = get_public_key_pem()
+    
+    # 加载公钥
+    public_key = serialization.load_pem_public_key(
+        public_key_pem.encode('utf-8')
+    )
+    
+    # 加密密码
+    encrypted = public_key.encrypt(
+        password.encode('utf-8'),
+        padding.PKCS1v15()
+    )
+    
+    # 返回base64编码的加密结果
+    return base64.b64encode(encrypted).decode('utf-8')
+
+
 def seed_sample_data() -> None:
     """Seed the SQLite database with sample data.
 
@@ -47,15 +72,23 @@ def seed_sample_data() -> None:
     """
     db = SessionLocal()
     try:
-        # Users
+        # Users - 使用RSA加密密码，然后哈希存储
+        # 首先模拟前端加密过程
+        alice_encrypted_password = encrypt_password_for_db("123456")
+        bob_encrypted_password = encrypt_password_for_db("123456")
+        
+        # 然后解密并哈希，与认证流程保持一致
+        alice_password = decrypt_password(alice_encrypted_password)
+        bob_password = decrypt_password(bob_encrypted_password)
+        
         alice = User(
             email="1@qq.com",
-            hashed_password=get_password_hash("123456"),
+            hashed_password=get_password_hash(alice_password),
             company_name="Alice Trading Co.",
         )
         bob = User(
             email="bob@example.com",
-            hashed_password=get_password_hash("123456"),
+            hashed_password=get_password_hash(bob_password),
             company_name="Bob Supplies Ltd.",
         )
         db.add_all([alice, bob])
