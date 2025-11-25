@@ -72,8 +72,7 @@ def delete_company(company_id: int, db: Session = Depends(get_db), current_user:
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     has_customers = db.query(Customer.id).filter(Customer.company_id == company_id).first()
-    has_suppliers = db.query(Supplier.id).filter(Supplier.company_id == company_id).first()
-    if has_customers or has_suppliers:
+    if has_customers:
         raise HTTPException(status_code=400, detail="Company has linked contacts")
     db.delete(company)
     db.commit()

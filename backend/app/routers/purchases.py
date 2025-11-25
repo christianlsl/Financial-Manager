@@ -77,7 +77,7 @@ def _apply_price_validation(payload: dict, current_purchase: Purchase | None = N
 
 
 def _supplier_access_filter(current_user: User):
-    return Supplier.vendors.any(User.id == current_user.id)
+    return Supplier.customers.any(User.id == current_user.id)
 
 
 def _get_accessible_supplier(db: Session, current_user: User, supplier_id: int) -> Supplier | None:

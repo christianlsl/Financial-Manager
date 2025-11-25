@@ -7,7 +7,7 @@ def _encrypt_with_pem(pem: str, plaintext: str) -> str:
     pub = serialization.load_pem_public_key(pem.encode("utf-8"))
     ct = pub.encrypt(
         plaintext.encode("utf-8"),
-        padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None),
+        padding.PKCS1v15(),
     )
     return base64.b64encode(ct).decode("utf-8")
 

@@ -501,22 +501,6 @@ watch(
     }
   }
 )
-
-watch(
-  () => form.company_id,
-  (companyId) => {
-    form.department_id = null
-    form.customer_id = null
-  }
-)
-
-watch(
-  () => form.department_id,
-  (departmentId) => {
-    form.customer_id = null
-  }
-)
-
 watch(
   () => isStrangerCustomer.value,
   (value) => {
@@ -591,12 +575,11 @@ function openCreateDialog() {
 function openEditDialog(row) {
   // Find customer to get department and company
   const customer = customers.value.find((c) => c.id === row.customer_id)
-  const department_id = customer?.department_id ?? null
   const company_id = customer?.company_id ?? null
   Object.assign(form, {
     date: row.date,
     company_id,
-    department_id,
+    department_id: row.customer_department_id ?? null,
     customer_id: row.customer_id ?? null,
     type_id: row.type_id ?? null,
     item_name: row.item_name || '',
@@ -609,7 +592,7 @@ function openEditDialog(row) {
   })
   isEditing.value = true
   editingId.value = row.id
-  isStrangerCustomer.value = false
+  isStrangerCustomer.value = row.customer_id === null
   dialogVisible.value = true
 }
 

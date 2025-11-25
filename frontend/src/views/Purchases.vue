@@ -188,10 +188,10 @@
           <el-input-number v-model="form.items_count" :min="1" :max="999999" />
         </el-form-item>
         <el-form-item label="采购单价" prop="unit_price">
-          <el-input-number v-model="form.unit_price" :min="0" :step="0.01" :precision="2" />
+          <el-input-number v-model="form.unit_price" :min="0" :step="10" :precision="2" />
         </el-form-item>
         <el-form-item label="采购金额" prop="total_price">
-          <el-input-number v-model="form.total_price" :min="0" :step="0.01" :precision="2" disabled />
+          <el-input-number v-model="form.total_price" :min="0" :step="10" :precision="2" disabled />
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="form.status">

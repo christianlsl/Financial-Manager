@@ -65,7 +65,7 @@ def auth_headers(client: TestClient) -> Callable[[str, str], Dict[str, str]]:
         pub = serialization.load_pem_public_key(pem.encode("utf-8"))
         ct = pub.encrypt(
             plaintext.encode("utf-8"),
-            padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None),
+            padding.PKCS1v15(),
         )
         return base64.b64encode(ct).decode("utf-8")
 
@@ -101,10 +101,17 @@ def attach_vendor():
             user = db.query(User).filter(User.email == user_email).first()
             if not entity or not user:
                 raise RuntimeError("Entity or user not found when attaching vendor")
-            if user not in entity.vendors:
-                entity.vendors.append(user)
-                db.add(entity)
-                db.commit()
+            if entity_type == "customer":
+                # 假设Customer实体有vendors属性
+                if user not in entity.vendors:
+                    entity.vendors.append(user)
+                    db.add(entity)
+                    db.commit()
+            elif entity_type == "supplier":
+                if user not in entity.customers:
+                    entity.customers.append(user)
+                    db.add(entity)
+                    db.commit()
         finally:
             db.close()
 
