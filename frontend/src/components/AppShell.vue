@@ -30,6 +30,12 @@
           </el-icon>
           <span>业务</span>
         </el-menu-item>
+        <el-menu-item index="/statistics">
+          <el-icon>
+            <DataAnalysis />
+          </el-icon>
+          <span>统计</span>
+        </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon>
             <Setting />
@@ -56,7 +62,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { Briefcase, Monitor, Setting, ShoppingCart, TrendCharts } from '@element-plus/icons-vue'
+import { Briefcase, DataAnalysis, Monitor, Setting, ShoppingCart, TrendCharts } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()

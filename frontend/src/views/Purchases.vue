@@ -22,7 +22,7 @@
         </el-space>
       </div>
 
-      <el-card shadow="never" class="purchases__filters">
+      <el-card shadow="always" class="purchases__filters">
         <el-form :inline="false" :model="filters" label-width="90px" class="purchases__filters-form">
           <!-- 第一排：搜索 -->
           <el-row :gutter="16" class="filters-row">
@@ -95,7 +95,7 @@
         </el-form>
       </el-card>
 
-      <el-card shadow="never" class="purchases__table" v-loading="loading" style="overflow:auto">
+      <el-card shadow="always" class="purchases__table" v-loading="loading" style="overflow:auto">
         <template #header>
           <div class="purchases__table-header">采购列表</div>
         </template>

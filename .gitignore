@@ -17,4 +17,4 @@ node_modules/
 htmlcov/
 
 *.db
-backend/financial_manager.db
+*.pem

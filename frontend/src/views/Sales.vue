@@ -28,7 +28,7 @@
         </el-space>
       </div>
 
-      <el-card shadow="never" class="sales__filters">
+      <el-card shadow="always" class="sales__filters">
         <el-form :inline="false" :model="filters" label-width="90px" class="sales__filters-form">
           <!-- 第一排：搜索 -->
           <el-row :gutter="16" class="filters-row">
@@ -127,7 +127,7 @@
           </el-row>
         </el-form>
       </el-card>
-      <el-card shadow="never" class="sales__table" v-loading="loading" style="overflow:auto">
+      <el-card shadow="always" class="sales__table" v-loading="loading" style="overflow:auto">
         <template #header>
           <div class="sales__table-header">销售列表</div>
         </template>
@@ -389,11 +389,11 @@ const rules = {
     message: '请选择公司',
     trigger: 'change'
   }],
-  department_id: [{
-    // required: function () { return !isStrangerCustomer.value && form.company_id && form.company_id !== 0 },
-    message: '请选择部门',
-    trigger: 'change'
-  }],
+  // department_id: [{
+  // required: function () { return !isStrangerCustomer.value && form.company_id && form.company_id !== 0 },
+  // message: '请选择部门',
+  // trigger: 'change'
+  // }],
   customer_id: [{
     required: function () { return !isStrangerCustomer.value },
     message: '请选择客户',

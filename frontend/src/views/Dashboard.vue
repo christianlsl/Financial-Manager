@@ -56,7 +56,7 @@
 
       <el-row :gutter="18">
         <el-col :xs="24" :lg="12">
-          <el-card shadow="never" class="dashboard__panel" v-loading="loadingPurchases">
+          <el-card shadow="always" class="dashboard__panel" v-loading="loadingPurchases">
             <template #header>
               <div class="dashboard__panel-header">
                 <span>最近采购</span>
@@ -86,7 +86,7 @@
         </el-col>
 
         <el-col :xs="24" :lg="12">
-          <el-card shadow="never" class="dashboard__panel" v-loading="loadingSales">
+          <el-card shadow="always" class="dashboard__panel" v-loading="loadingSales">
             <template #header>
               <div class="dashboard__panel-header">
                 <span>最近销售</span>
@@ -291,6 +291,7 @@ onMounted(() => {
   border: none;
   background: #ffffff;
   width: 600px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .dashboard__metric-label {

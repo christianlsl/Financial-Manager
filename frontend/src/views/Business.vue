@@ -9,7 +9,7 @@
         <el-button :loading="loading" type="primary" plain @click="loadAll">同步数据</el-button>
       </div>
 
-      <el-card shadow="never" class="catalogs__card">
+      <el-card shadow="always" class="catalogs__card">
         <el-tabs v-model="activeTab">
           <el-tab-pane label="客户" name="customers">
             <div class="catalogs__toolbar catalogs__toolbar--between">
@@ -178,7 +178,7 @@
       </el-card>
 
       <!-- 供应商和物料类型分离出来 -->
-      <el-card shadow="never" class="catalogs__card" style="margin-top: 24px;">
+      <el-card shadow="always" class="catalogs__card" style="margin-top: 24px;">
         <el-tabs v-model="suppliersTab">
           <el-tab-pane label="供应商" name="suppliers">
             <div class="catalogs__toolbar catalogs__toolbar--between">

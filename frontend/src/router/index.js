@@ -7,6 +7,7 @@ const Dashboard = () => import('../views/Dashboard.vue')
 const Purchases = () => import('../views/Purchases.vue')
 const Sales = () => import('../views/Sales.vue')
 const Business = () => import('../views/Business.vue')
+const Statistics = () => import('../views/Statistics.vue')
 const Settings = () => import('../views/Settings.vue')
 
 const routes = [
@@ -17,6 +18,7 @@ const routes = [
     { path: '/purchases', component: Purchases, meta: { requiresAuth: true } },
     { path: '/sales', component: Sales, meta: { requiresAuth: true } },
     { path: '/business', component: Business, meta: { requiresAuth: true } },
+    { path: '/statistics', component: Statistics, meta: { requiresAuth: true } },
     { path: '/settings', component: Settings, meta: { requiresAuth: true } },
 ]
 
