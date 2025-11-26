@@ -25,6 +25,7 @@ cd ./backend
 # Generate RSA key pair for password encryption
 uv run app/utils/init_keys.py
 ```
+修改config_example.yaml为config.yaml并增加配置
 
 ### Database
 
@@ -85,6 +86,9 @@ The frontend is configured to use relative paths (e.g., `/api/users`) for API ca
 ### 部署后端
 
 1. 将后端文件/backend上传至服务器
+   ```bash
+   scp -r ./* root@47.100.89.197:~/Financial-Manager/backend
+   ```
 
 2. ```bash
    uv sync
@@ -132,6 +136,7 @@ The frontend is configured to use relative paths (e.g., `/api/users`) for API ca
 2. Build frontend and deploy
 
    ```bash
+   cd frontend
    npm run build
    ```
 
