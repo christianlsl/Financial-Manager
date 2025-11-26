@@ -381,6 +381,19 @@ def delete_purchase(
     )
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
+    
+    # 记录图片URL以便在删除记录前删除图片
+    image_url = purchase.image_url
+    
+    # 删除数据库记录
     db.delete(purchase)
     db.commit()
+    
+    # 最佳努力删除七牛云上的图片
+    if image_url:
+        try:
+            uploader.delete(image_url)
+        except ImageUploadError as exc:
+            logger.warning("Failed to delete purchase image %s: %s", image_url, exc)
+    
     return {"ok": True}

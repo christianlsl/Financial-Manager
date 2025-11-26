@@ -283,7 +283,8 @@
           </el-select>
         </el-form-item>
         <el-form-item label="所属部门" prop="department_id">
-          <el-select v-model="customerDialog.form.department_id" placeholder="请选择部门" clearable filterable>
+          <el-select v-model="customerDialog.form.department_id" placeholder="请选择部门"
+            :disabled="customerDialog.form.company_id === PERSONAL_COMPANY_VALUE" clearable filterable>
             <el-option v-for="dept in customerDepartmentOptions" :key="dept.id" :value="dept.id" :label="dept.name" />
           </el-select>
         </el-form-item>

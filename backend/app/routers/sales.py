@@ -374,6 +374,19 @@ def delete_sale(sale_id: int, db: Session = Depends(get_db), current_user: User 
     sale = db.query(Sale).filter(Sale.id == sale_id, Sale.owner_id == current_user.id).first()
     if not sale:
         raise HTTPException(status_code=404, detail="Sale not found")
+    
+    # 记录图片URL以便在删除记录前删除图片
+    image_url = sale.image_url
+    
+    # 删除数据库记录
     db.delete(sale)
     db.commit()
+    
+    # 最佳努力删除七牛云上的图片
+    if image_url:
+        try:
+            uploader.delete(image_url)
+        except ImageUploadError as exc:
+            logger.warning("Failed to delete sale image %s: %s", image_url, exc)
+    
     return {"ok": True}
