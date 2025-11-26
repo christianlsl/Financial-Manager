@@ -299,7 +299,7 @@ def main():
     parser.add_argument(
         '--action', 
         choices=['reset', 'reset_and_seed'], 
-        default='reset_and_seed',
+        default='reset',
         help='Action to perform: reset (only reset database) or reset_and_seed (reset and insert sample data)'
     )
     
