@@ -178,34 +178,18 @@
             </el-table-column>
             <el-table-column label="状态" width="110">
               <template #default="{ row }">
-                <el-popover
-                  v-model:visible="statusPopoverVisible[row.id]"
-                  trigger="click"
-                  placement="top"
-                  :close-on-click-outside="true"
-                  :close-on-click="false"
-                >
+                <el-popover v-model:visible="statusPopoverVisible[row.id]" trigger="click" placement="top"
+                  :close-on-click-outside="true" :close-on-click="false">
                   <template #reference>
                     <el-tag :type="statusType(row.status)" size="small" @click.stop>
                       {{ statusLabel(row.status) }}
                     </el-tag>
                   </template>
-                  <el-select
-                    v-model="editingStatus[row.id]"
-                    placeholder="选择状态"
-                    size="small"
-                    style="width: 120px"
-                    :loading="isUpdatingStatus[row.id]"
-                    :disabled="isUpdatingStatus[row.id]"
+                  <el-select v-model="editingStatus[row.id]" placeholder="选择状态" size="small" style="width: 120px"
+                    :loading="isUpdatingStatus[row.id]" :disabled="isUpdatingStatus[row.id]"
                     @change="handleStatusChange(row.id)"
-                    @visible-change="handleStatusSelectVisibleChange($event, row.id)"
-                  >
-                    <el-option
-                      v-for="(option, key) in statusOptions"
-                      :key="key"
-                      :label="option.label"
-                      :value="key"
-                    />
+                    @visible-change="handleStatusSelectVisibleChange($event, row.id)">
+                    <el-option v-for="(option, key) in statusOptions" :key="key" :label="option.label" :value="key" />
                   </el-select>
                 </el-popover>
               </template>
@@ -575,42 +559,42 @@ function handleStatusSelectVisibleChange(visible, id) {
 async function handleStatusChange(id) {
   const newStatus = editingStatus[id]
   if (!newStatus) return
-  
+
   // 找到对应的销售记录
   const rowIndex = sales.value.findIndex(item => item.id === id)
   if (rowIndex === -1) return
-  
+
   const row = sales.value[rowIndex]
   // 如果状态没有变化，直接关闭弹出框
   if (row.status === newStatus) {
     statusPopoverVisible[id] = false
     return
   }
-  
+
   try {
     // 设置加载状态
     isUpdatingStatus[id] = true
-    
+
     // 调用后端API更新状态
     auth.ensureInterceptors()
     await api.put(`/sales/${id}`, { status: newStatus })
-    
+
     // 更新本地数据
     row.status = newStatus
-    
+
     // 显示成功消息
     ElMessage.success('状态更新成功')
   } catch (error) {
     // 显示错误消息
     const message = error?.response?.data?.detail || error?.message || '更新状态失败'
     ElMessage.error(message)
-    
+
     // 恢复原来的状态
     editingStatus[id] = row.status
   } finally {
     // 重置加载状态
     isUpdatingStatus[id] = false
-    
+
     // 关闭弹出框
     statusPopoverVisible[id] = false
   }
@@ -1122,20 +1106,23 @@ onMounted(async () => {
 <style scoped>
 .sales {
   width: 100%;
- 
+
   /* 调整弹出框样式，确保显示在表格单元格上方 */
   :deep(.el-popover) {
     min-width: 140px;
     padding: 8px;
   }
+
   /* 确保标签可点击区域足够大 */
   :deep(.el-tag) {
     cursor: pointer;
     transition: all 0.3s;
   }
+
   :deep(.el-tag:hover) {
     opacity: 0.8;
   }
+
   /* 确保选择器在加载时有明显的指示 */
   :deep(.el-select__wrap) {
     min-height: 32px;

@@ -29,12 +29,7 @@ def create_company(data: CompanyCreate, db: Session = Depends(get_db), current_u
     if existing:
         matches = all(getattr(existing, key) == value for key, value in payload.items())
         if not matches:
-            raise HTTPException(status_code=400, detail="Company name already exists with different data")
-        if not any(vendor.id == current_user.id for vendor in existing.vendors):
-            existing.vendors.append(current_user)
-            db.add(existing)
-            db.commit()
-            db.refresh(existing)
+            raise HTTPException(status_code=400, detail="公司名称已存在且信息不匹配")
         return existing
 
     company = Company(**payload)

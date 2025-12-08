@@ -83,11 +83,21 @@ def create_customer(
         )
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
+
     department_id = payload.get("department_id")
     if department_id is not None:
         department_obj = _get_accessible_department(db, current_user, department_id)
         if not department_obj:
             raise HTTPException(status_code=404, detail="Department not found")
+        
+    existing = (
+        db.query(Customer)
+        .filter(Customer.name == payload.get("name"), Customer.company_id == company_id, Customer.department_id == department_id, _customer_access_filter(current_user))
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="Customer already exists")
+    
     customer = Customer(**payload)
     customer.vendors.append(current_user)
     db.add(customer)

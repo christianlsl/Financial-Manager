@@ -188,9 +188,8 @@ The frontend is configured to use relative paths (e.g., `/api/users`) for API ca
 
    ```bash
    nginx -t  # 验证配置是否正确
+   nginx -s reload
    systemctl restart nginx  # 重启服务
-   # 或
-   # nginx -s reload
    ```
 
 ### 测试与排查
