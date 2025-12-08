@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import get_current_user
 from ..models.type import Type
+from ..models.purchase import Purchase
+from ..models.sale import Sale
 from ..models.user import User
 from ..schemas.type import TypeCreate, TypeRead, TypeUpdate
 
@@ -59,6 +61,14 @@ def delete_type(type_id: int, db: Session = Depends(get_db), current_user: User 
     type_obj = db.query(Type).filter(Type.id == type_id, Type.owner_id == current_user.id).first()
     if not type_obj:
         raise HTTPException(status_code=404, detail="Type not found")
+
+    has_sales = db.query(Sale.id).filter(Sale.type_id == type_id).first()
+    if has_sales:
+        raise HTTPException(status_code=400, detail="Type has linked sales")
+
+    has_purchases = db.query(Purchase.id).filter(Purchase.type_id == type_id).first()
+    if has_purchases:
+        raise HTTPException(status_code=400, detail="Type has linked purchases")
     db.delete(type_obj)
     db.commit()
     return {"ok": True}

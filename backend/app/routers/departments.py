@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import get_current_user
 from ..models.company import Company
+from ..models.customer import Customer
 from ..models.department import Department
 from ..models.user import User
 from ..schemas.department import DepartmentCreate, DepartmentRead, DepartmentUpdate
@@ -117,6 +118,10 @@ def delete_department(
     department = _get_accessible_department(db, current_user, department_id)
     if not department:
         raise HTTPException(status_code=404, detail="Department not found")
+
+    has_members = db.query(Customer.id).filter(Customer.department_id == department_id).first()
+    if has_members:
+        raise HTTPException(status_code=400, detail="Department has linked customers")
     db.delete(department)
     db.commit()
     return {"ok": True}

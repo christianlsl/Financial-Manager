@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import get_current_user
 from ..models.supplier import Supplier
+from ..models.purchase import Purchase
 from ..models.user import User
  
 from ..schemas.supplier import SupplierCreate, SupplierRead, SupplierUpdate
@@ -100,6 +101,10 @@ def delete_supplier(
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id, access_filter).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
+
+    has_purchases = db.query(Purchase.id).filter(Purchase.supplier_id == supplier_id).first()
+    if has_purchases:
+        raise HTTPException(status_code=400, detail="Supplier has linked purchases")
 
     db.delete(supplier)
     db.commit()

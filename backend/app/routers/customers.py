@@ -6,6 +6,7 @@ from ..db import get_db
 from ..deps import get_current_user
 from ..models.company import Company
 from ..models.customer import Customer
+from ..models.sale import Sale
 from ..models.department import Department
 from ..models.user import User
 
@@ -188,6 +189,10 @@ def delete_customer(
     customer = db.query(Customer).filter(Customer.id == customer_id, access_filter).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
+
+    has_sales = db.query(Sale.id).filter(Sale.customer_id == customer_id).first()
+    if has_sales:
+        raise HTTPException(status_code=400, detail="Customer has linked sales")
 
     db.delete(customer)
     db.commit()
