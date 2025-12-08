@@ -22,6 +22,7 @@ class CustomerUpdate(BaseModel):
     email: Optional[EmailStr] = None
     position: Optional[str] = None
     company_id: Optional[int] = None
+    department_id: Optional[int] = None
 
 
 class CustomerRead(CustomerBase):

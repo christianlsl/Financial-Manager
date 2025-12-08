@@ -14,7 +14,11 @@
                 "9910",
                 "--reload"
             ],
-            "cwd": "${workspaceFolder}/app",
+            "cwd": "${workspaceFolder}/backend",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/backend"
+            }, // 解决模块导入问题
+            "justMyCode": false, // 允许调试第三方库（如 FastAPI/Uvicorn，可选）
             "console": "integratedTerminal"
         }
     ]

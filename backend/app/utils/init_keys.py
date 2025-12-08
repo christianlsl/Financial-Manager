@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives import hashes
 
 # 密钥文件路径
-KEYS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "keys"))
+KEYS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "keys"))
 PRIVATE_KEY_PATH = os.path.join(KEYS_DIR, "private_key.pem")
 PUBLIC_KEY_PATH = os.path.join(KEYS_DIR, "public_key.pem")
 
