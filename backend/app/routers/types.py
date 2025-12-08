@@ -21,7 +21,8 @@ def list_types(skip: int = 0, limit: int = 100, q: str | None = None, db: Sessio
 
 @router.post("/", response_model=TypeRead, status_code=201)
 def create_type(data: TypeCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    existing = db.query(Type).filter(Type.name == data.name, Type.owner_id == current_user.id).first()
+    payload = data.model_dump()
+    existing = db.query(Type).filter(Type.name == payload.get("name"), Type.owner_id == current_user.id).first()
     if existing:
         raise HTTPException(status_code=409, detail="Type already exists")
 

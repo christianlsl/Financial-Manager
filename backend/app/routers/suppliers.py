@@ -41,6 +41,7 @@ def create_supplier(
     current_user: User = Depends(get_current_user),
 ):
     access_filter = _supplier_access_filter(current_user)
+    payload = data.model_dump()
     existing = db.query(Supplier).filter(Supplier.name == payload.get("name"), access_filter).first()
     if existing:
         raise HTTPException(status_code=409, detail="Supplier already exists")
