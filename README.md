@@ -41,13 +41,49 @@ uv run -m app.utils.manage_db --action reset_and_seed
 uv run -m app.utils.manage_db --action reset
 ```
 
-Run development server:
+### Run
+
+#### Run development server
 
 ```bash
 uv run uvicorn app.main:app --reload --port 9910
 ```
 
 API docs: http://127.0.0.1:9910/docs
+
+#### Debug server
+
++ modify .vscode/launch.json
+
+  ```json
+  {
+      "version": "0.2.0",
+      "configurations": [
+          {
+              "name": "Python: FastAPI",
+              "type": "debugpy",
+              "request": "launch",
+              "module": "uvicorn",
+              "args": [
+                  "main:app",
+                  "--host",
+                  "127.0.0.1",
+                  "--port",
+                  "9910",
+                  "--reload"
+              ],
+              "cwd": "${workspaceFolder}/backend",
+              "env": {
+                  "PYTHONPATH": "${workspaceFolder}/backend"
+              }, // 解决模块导入问题
+              "justMyCode": false, // 允许调试第三方库（如 FastAPI/Uvicorn，可选）
+              "console": "integratedTerminal"
+          }
+      ]
+  }
+  ```
+
++ debug button on left sidebar of vscode
 
 ### Tests
 
@@ -66,6 +102,8 @@ cd frontend
 npm install
 npm run dev
 ```
+
+
 
 #### API Configuration
 
