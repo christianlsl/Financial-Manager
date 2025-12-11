@@ -238,7 +238,17 @@
               @current-change="handleSupplierPageChange" @size-change="handleSupplierPageSizeChange" />
           </el-tab-pane>
           <el-tab-pane label="物料类型" name="types">
-            <div class="catalogs__toolbar">
+            <div class="catalogs__toolbar catalogs__toolbar--between">
+              <div class="catalogs__filters">
+                <el-input v-model="typeSearchKeyword" placeholder="搜索类型名称" style="width: 300px; margin-right: 16px"
+                  clearable>
+                  <template #prefix>
+                    <el-icon>
+                      <Search />
+                    </el-icon>
+                  </template>
+                </el-input>
+              </div>
               <el-button type="primary" @click="openTypeDialog()">
                 <el-icon>
                   <Ticket />
@@ -265,6 +275,10 @@
               </el-table>
             </div>
             <el-empty v-if="!types.length && !loadingTypes" description="暂无类型数据" />
+            <el-pagination v-if="pagination.types.total > 0" class="catalogs__pagination"
+              :total="pagination.types.total" :page-sizes="[10, 20, 50]" :page-size="pagination.types.pageSize"
+              :current-page="pagination.types.page" layout="total, sizes, prev, pager, next"
+              @current-change="handleTypePageChange" @size-change="handleTypePageSizeChange" />
           </el-tab-pane>
         </el-tabs>
       </el-card>
@@ -426,6 +440,7 @@ const supplierFilterCompanyId = ref(ALL_COMPANY_VALUE)
 const customerSearchKeyword = ref('')
 const companySearchKeyword = ref('')
 const supplierSearchKeyword = ref('')
+const typeSearchKeyword = ref('')
 
 // 分页相关状态
 const pagination = reactive({
@@ -440,6 +455,11 @@ const pagination = reactive({
     total: 0
   },
   suppliers: {
+    page: 1,
+    pageSize: 10,
+    total: 0
+  },
+  types: {
     page: 1,
     pageSize: 10,
     total: 0
@@ -729,6 +749,24 @@ watch(companySearchKeyword, () => {
   loadCompanies()
 })
 
+// 类型分页处理函数
+function handleTypePageChange(page) {
+  pagination.types.page = page
+  loadTypes()
+}
+
+function handleTypePageSizeChange(pageSize) {
+  pagination.types.pageSize = pageSize
+  pagination.types.page = 1
+  loadTypes()
+}
+
+// 类型搜索变更时重置分页
+watch(typeSearchKeyword, () => {
+  pagination.types.page = 1
+  loadTypes()
+})
+
 function selectCompanyAndManageDepartments(company) {
   selectedCompany.value = company
   // 延迟滚动到部门列表区域，确保DOM已更新
@@ -914,8 +952,22 @@ async function loadDepartments() {
 async function loadTypes() {
   loadingTypes.value = true
   try {
-    const { data } = await api.get('/types/', { params: { limit: 200 } })
-    types.value = data
+    const params = {
+      skip: (pagination.types.page - 1) * pagination.types.pageSize,
+      limit: pagination.types.pageSize,
+      q: typeSearchKeyword.value.trim()
+    }
+    const { data } = await api.get('/types/', { params })
+
+    // 获取总数
+    const countParams = { limit: 1000 }
+    if (typeSearchKeyword.value.trim()) {
+      countParams.q = typeSearchKeyword.value.trim()
+    }
+    const allTypes = await api.get('/types/', { params: countParams })
+    pagination.types.total = Array.isArray(allTypes.data) ? allTypes.data.length : 0
+
+    types.value = Array.isArray(data) ? data : []
   } catch (error) {
     const message = error?.response?.data?.detail || error?.message || '加载类型列表失败'
     ElMessage.error(message)
@@ -1241,7 +1293,7 @@ async function removeType(id) {
   try {
     await api.delete(`/types/${id}`)
     ElMessage.success('删除类型成功')
-    types.value = types.value.filter((item) => item.id !== id)
+    await loadTypes()
   } catch (error) {
     const message = error?.response?.data?.detail || error?.message || '删除类型失败'
     ElMessage.error(message)
