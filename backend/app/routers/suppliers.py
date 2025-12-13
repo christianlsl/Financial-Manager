@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -6,7 +7,7 @@ from ..deps import get_current_user
 from ..models.supplier import Supplier
 from ..models.purchase import Purchase
 from ..models.user import User
- 
+
 from ..schemas.supplier import SupplierCreate, SupplierRead, SupplierUpdate
 
 router = APIRouter()
@@ -20,19 +21,45 @@ def _supplier_access_filter(current_user: User):
 def list_suppliers(
     skip: int = 0,
     limit: int = 100,
+    q: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     access_filter = _supplier_access_filter(current_user)
-    suppliers = (
-        db.query(Supplier)
-        .filter(access_filter)
-        .order_by(Supplier.id)
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    query = db.query(Supplier).filter(access_filter)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                Supplier.name.ilike(like),
+                Supplier.phone_number.ilike(like),
+                Supplier.email.ilike(like),
+                Supplier.address.ilike(like),
+            )
+        )
+    suppliers = query.order_by(Supplier.id).offset(skip).limit(limit).all()
     return [SupplierRead.model_validate(entry) for entry in suppliers]
+
+
+@router.get("/count", response_model=int)
+def count_suppliers(
+    q: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    access_filter = _supplier_access_filter(current_user)
+    query = db.query(Supplier).filter(access_filter)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(
+                Supplier.name.ilike(like),
+                Supplier.phone_number.ilike(like),
+                Supplier.email.ilike(like),
+                Supplier.address.ilike(like),
+            )
+        )
+    return query.count()
 
 
 @router.post("/", response_model=SupplierRead)
@@ -46,7 +73,7 @@ def create_supplier(
     existing = db.query(Supplier).filter(Supplier.name == payload.get("name"), access_filter).first()
     if existing:
         raise HTTPException(status_code=409, detail="Supplier already exists")
-    
+
     payload = data.model_dump()
     supplier = Supplier(**payload)
     supplier.customers.append(current_user)

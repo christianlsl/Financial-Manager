@@ -13,7 +13,13 @@ router = APIRouter()
 
 
 @router.get("/", response_model=list[TypeRead])
-def list_types(skip: int = 0, limit: int = 100, q: str | None = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def list_types(
+    skip: int = 0,
+    limit: int = 100,
+    q: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     query = db.query(Type).filter(Type.owner_id == current_user.id)
     if q:
         like = f"%{q}%"
@@ -21,10 +27,25 @@ def list_types(skip: int = 0, limit: int = 100, q: str | None = None, db: Sessio
     return query.offset(skip).limit(limit).all()
 
 
+@router.get("/count", response_model=int)
+def count_types(
+    q: str | None = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    query = db.query(Type).filter(Type.owner_id == current_user.id)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(Type.name.ilike(like))
+    return query.count()
+
+
 @router.post("/", response_model=TypeRead, status_code=201)
-def create_type(data: TypeCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def create_type(
+    data: TypeCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     payload = data.model_dump()
-    existing = db.query(Type).filter(Type.name == payload.get("name"), Type.owner_id == current_user.id).first()
+    existing = (
+        db.query(Type).filter(Type.name == payload.get("name"), Type.owner_id == current_user.id).first()
+    )
     if existing:
         raise HTTPException(status_code=409, detail="Type already exists")
 
@@ -44,7 +65,12 @@ def get_type(type_id: int, db: Session = Depends(get_db), current_user: User = D
 
 
 @router.put("/{type_id}", response_model=TypeRead)
-def update_type(type_id: int, data: TypeUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def update_type(
+    type_id: int,
+    data: TypeUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     type_obj = db.query(Type).filter(Type.id == type_id, Type.owner_id == current_user.id).first()
     if not type_obj:
         raise HTTPException(status_code=404, detail="Type not found")

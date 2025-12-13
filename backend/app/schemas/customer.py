@@ -27,6 +27,8 @@ class CustomerUpdate(BaseModel):
 
 class CustomerRead(CustomerBase):
     id: int
+    company_name: Optional[str] = None
+    department_name: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 

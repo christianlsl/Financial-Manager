@@ -14,7 +14,9 @@ class Customer(Base):
     email = Column(String(255), nullable=True)
     position = Column(String(255), nullable=True)
     company_id = Column(Integer, nullable=False, default=0, index=True)
-    department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
+    department_id = Column(
+        Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     company = relationship(
         "Company",
@@ -25,3 +27,13 @@ class Customer(Base):
     department = relationship("Department", foreign_keys=[department_id], back_populates="members")
     sales = relationship("Sale", back_populates="customer")
     vendors = relationship("User", secondary=user_customer_table, back_populates="customers")
+
+    @property
+    def company_name(self):
+        if self.company_id == 0:
+            return "个人客户"
+        return self.company.name if self.company else None
+
+    @property
+    def department_name(self):
+        return self.department.name if self.department else None

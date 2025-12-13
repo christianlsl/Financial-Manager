@@ -48,10 +48,7 @@ def list_departments(
     if company_id is not None:
         query = query.filter(Department.company_id == company_id)
     departments = (
-        query.order_by(Department.company_id.asc(), Department.name.asc())
-        .offset(skip)
-        .limit(limit)
-        .all()
+        query.order_by(Department.company_id.asc(), Department.name.asc()).offset(skip).limit(limit).all()
     )
     return [DepartmentRead.model_validate(dept) for dept in departments]
 
@@ -64,7 +61,12 @@ def create_department(
 ):
     company = _get_accessible_company(db, current_user, data.company_id)
     if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
+        raise HTTPException(status_code=404, detail="没有找到所属公司")
+    existing = (
+        db.query(Department).filter(Department.name == data.name, Department.company_id == company.id).first()
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="部门名称已存在")
     department = Department(name=data.name, company_id=company.id)
 
     db.add(department)
@@ -96,7 +98,6 @@ def update_department(
         department.company_id = company.id
     else:
         company = department.company
-
 
     if "name" in payload and payload["name"]:
         department.name = payload["name"]

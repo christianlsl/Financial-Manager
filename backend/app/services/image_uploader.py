@@ -66,7 +66,7 @@ class ImageUploader:
         except Exception as exc:  # pragma: no cover - invalid files
             raise ImageUploadError("无法解析上传的图片文件") from exc
 
-        max_bytes = max(10 * 1024, self._max_bytes)
+        max_bytes = self._max_bytes
         quality = 90
         width, height = image.size
 
@@ -74,7 +74,7 @@ class ImageUploader:
             buffer = io.BytesIO()
             image.save(buffer, format="JPEG", quality=quality, optimize=True)
             size = buffer.tell()
-            if size <= max_bytes or (quality <= 40 and max(width, height) <= 512):
+            if size <= max_bytes:
                 return buffer.getvalue(), "jpg"
             if quality > 50:
                 quality -= 10

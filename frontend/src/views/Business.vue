@@ -39,11 +39,11 @@
               <el-table :data="filteredCustomers" border stripe v-loading="loadingCustomers"
                 @current-change="handleCustomerSelect">
                 <el-table-column prop="name" label="客户名称" min-width="200" />
-                <el-table-column label="所属公司" min-width="180">
-                  <template #default="{ row }">{{ getCompanyName(row.company_id) }}</template>
+                <el-table-column prop="company_name" label="所属公司" min-width="180">
+                  <template #default="{ row }">{{ row.company_name || '—' }}</template>
                 </el-table-column>
-                <el-table-column label="所属部门" min-width="160">
-                  <template #default="{ row }">{{ getDepartmentName(row.department_id) }}</template>
+                <el-table-column prop="department_name" label="所属部门" min-width="160">
+                  <template #default="{ row }">{{ row.department_name || '—' }}</template>
                 </el-table-column>
                 <el-table-column prop="position" label="职位" min-width="140">
                   <template #default="{ row }">{{ row.position || '—' }}</template>
@@ -95,13 +95,13 @@
                 </el-icon>
                 新建公司
               </el-button>
-              <el-button type="primary" :disabled="!selectedCompany"
+              <!-- <el-button type="primary" :disabled="!selectedCompany"
                 @click="openDepartmentDialog(null, selectedCompany?.id)">
                 <el-icon>
                   <OfficeBuilding />
                 </el-icon>
                 新建部门
-              </el-button>
+              </el-button> -->
             </div>
             <div class="catalogs__table-grid">
               <el-table :data="filteredCompanies" border stripe v-loading="loadingCompanies"
@@ -191,10 +191,6 @@
                     </el-icon>
                   </template>
                 </el-input>
-                <el-select v-model="supplierFilterCompanyId" placeholder="筛选公司" style="min-width: 200px">
-                  <el-option :value="ALL_COMPANY_VALUE" label="全部供应商" />
-                  <el-option v-for="item in companies" :key="item.id" :value="item.id" :label="item.name" />
-                </el-select>
               </div>
               <el-button type="primary" @click="openSupplierDialog()">
                 <el-icon>
@@ -207,14 +203,14 @@
               <el-table :data="filteredSuppliers" border stripe v-loading="loadingSuppliers"
                 @current-change="handleSupplierSelect">
                 <el-table-column prop="name" label="供应商名称" min-width="200" />
-                <el-table-column prop="position" label="职位" min-width="140">
-                  <template #default="{ row }">{{ row.position || '—' }}</template>
-                </el-table-column>
                 <el-table-column prop="phone_number" label="联系电话" min-width="160">
                   <template #default="{ row }">{{ row.phone_number || '—' }}</template>
                 </el-table-column>
                 <el-table-column prop="email" label="邮箱" min-width="200">
                   <template #default="{ row }">{{ row.email || '—' }}</template>
+                </el-table-column>
+                <el-table-column prop="address" label="地址" min-width="200">
+                  <template #default="{ row }">{{ row.address || '—' }}</template>
                 </el-table-column>
                 <el-table-column label="操作" width="160" fixed="right">
                   <template #default="{ row }">
@@ -326,14 +322,14 @@
         <el-form-item label="供应商名称" prop="name">
           <el-input v-model="supplierDialog.form.name" placeholder="请输入供应商名称" />
         </el-form-item>
-        <el-form-item label="职位">
-          <el-input v-model="supplierDialog.form.position" placeholder="请输入职位" />
-        </el-form-item>
         <el-form-item label="联系电话">
           <el-input v-model="supplierDialog.form.phone_number" placeholder="请输入电话号码" />
         </el-form-item>
         <el-form-item label="邮箱">
           <el-input v-model="supplierDialog.form.email" placeholder="name@example.com" />
+        </el-form-item>
+        <el-form-item label="地址">
+          <el-input v-model="supplierDialog.form.address" type="textarea" :rows="3" placeholder="详细地址" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -436,7 +432,6 @@ const selectedCompany = ref(null)
 const ALL_COMPANY_VALUE = 'all'
 const PERSONAL_COMPANY_VALUE = 0
 const customerFilterCompanyId = ref(ALL_COMPANY_VALUE)
-const supplierFilterCompanyId = ref(ALL_COMPANY_VALUE)
 const customerSearchKeyword = ref('')
 const companySearchKeyword = ref('')
 const supplierSearchKeyword = ref('')
@@ -553,7 +548,6 @@ const typeRules = {
 
 const supplierRules = {
   name: [{ required: true, message: '请输入供应商名称', trigger: 'blur' }],
-  company_id: [{ required: true, message: '请选择所属公司', trigger: 'change' }],
   email: [{ type: 'email', message: '邮箱格式不正确', trigger: ['blur', 'change'] }]
 }
 
@@ -598,8 +592,7 @@ function createSupplierForm() {
     name: '',
     phone_number: '',
     email: '',
-    position: '',
-    company_id: PERSONAL_COMPANY_VALUE
+    address: ''
   }
 }
 
@@ -644,42 +637,22 @@ const filteredCompanies = computed(() => {
 const filteredSuppliers = computed(() => {
   let result = suppliers.value
 
-  // 应用公司筛选
-  const companyFilter = supplierFilterCompanyId.value
-  if (companyFilter === ALL_COMPANY_VALUE) {
-    result = suppliers.value
-  } else {
-    result = suppliers.value.filter((item) => item.company_id === companyFilter)
-  }
-
   // 应用搜索关键词
   const keyword = supplierSearchKeyword.value.toLowerCase().trim()
   if (keyword) {
     result = result.filter((item) => {
       return (
         (item.name && item.name.toLowerCase().includes(keyword)) ||
-        (item.position && item.position.toLowerCase().includes(keyword)) ||
         (item.phone_number && item.phone_number.toLowerCase().includes(keyword)) ||
-        (item.email && item.email.toLowerCase().includes(keyword))
+        (item.email && item.email.toLowerCase().includes(keyword)) ||
+        (item.address && item.address.toLowerCase().includes(keyword))
       )
     })
+
   }
 
   return result
 })
-
-function getCompanyName(companyId) {
-  if (companyId === 0) return '个人客户'
-  if (companyId === null || companyId === undefined) return '—'
-  const company = companies.value.find((item) => item.id === companyId)
-  return company?.name || `公司 #${companyId}`
-}
-
-function getDepartmentName(departmentId) {
-  if (!departmentId) return '—'
-  const dept = departments.value.find((item) => item.id === departmentId)
-  return dept?.name || `部门 #${departmentId}`
-}
 
 function handleCompanySelect(company) {
   selectedCompany.value = company
@@ -726,10 +699,10 @@ function handleSupplierPageSizeChange(pageSize) {
 }
 
 // 供应商筛选变更时重置分页
-watch([supplierFilterCompanyId, supplierSearchKeyword], () => {
+watch(supplierSearchKeyword, () => {
   pagination.suppliers.page = 1
   loadSuppliers()
-}, { deep: true })
+})
 
 // 分页处理函数
 function handleCompanyPageChange(page) {
@@ -809,10 +782,13 @@ async function loadCompanies() {
     }
     const { data } = await api.get('/companies/', { params })
 
-    // 由于后端返回的是直接的数据数组，需要通过其他方式获取总数
-    // 这里暂时使用获取所有数据的方式来计算总数
-    const allCompanies = await api.get('/companies/', { params: { limit: 1000 } })
-    pagination.companies.total = Array.isArray(allCompanies.data) ? allCompanies.data.length : 0
+    // 获取总数
+    const countParams = {}
+    if (companySearchKeyword.value.trim()) {
+      countParams.q = companySearchKeyword.value.trim()
+    }
+    const { data: count } = await api.get('/companies/count', { params: countParams })
+    pagination.companies.total = count
 
     companies.value = Array.isArray(data) ? data : []
 
@@ -845,7 +821,7 @@ async function loadCustomers() {
     const { data } = await api.get('/customers/', { params })
 
     // 获取总数（带筛选条件）
-    const countParams = { limit: 1000 }
+    const countParams = {}
     if (customerFilterCompanyId.value !== ALL_COMPANY_VALUE) {
       countParams.company_id = customerFilterCompanyId.value
     }
@@ -853,7 +829,8 @@ async function loadCustomers() {
       countParams.q = customerSearchKeyword.value.trim()
     }
 
-    const allCustomersData = await api.get('/customers/', { params: countParams })
+    const { data: count } = await api.get('/customers/count', { params: countParams })
+    pagination.customers.total = count
 
     // 处理数据格式化，保持与原代码相同的格式转换逻辑
     const formattedData = (data || []).flatMap((group) => {
@@ -867,12 +844,6 @@ async function loadCustomers() {
       })
     })
 
-    // 处理总数数据格式
-    const allCustomers = (allCustomersData.data || []).flatMap((group) => {
-      return (group.customers || [])
-    })
-
-    pagination.customers.total = Array.isArray(allCustomers) ? allCustomers.length : 0
     customers.value = formattedData.sort((a, b) => {
       const companyA = a.company_id ?? -1
       const companyB = b.company_id ?? -1
@@ -896,24 +867,16 @@ async function loadSuppliers() {
       q: supplierSearchKeyword.value.trim()
     }
 
-    // 添加公司筛选条件
-    if (supplierFilterCompanyId.value !== ALL_COMPANY_VALUE) {
-      params.company_id = supplierFilterCompanyId.value
-    }
-
     const { data } = await api.get('/suppliers/', { params })
 
     // 获取总数（带筛选条件）
-    const countParams = { limit: 1000 }
-    if (supplierFilterCompanyId.value !== ALL_COMPANY_VALUE) {
-      countParams.company_id = supplierFilterCompanyId.value
-    }
+    const countParams = {}
     if (supplierSearchKeyword.value.trim()) {
       countParams.q = supplierSearchKeyword.value.trim()
     }
 
-    const allSuppliers = await api.get('/suppliers/', { params: countParams })
-    pagination.suppliers.total = Array.isArray(allSuppliers.data) ? allSuppliers.data.length : 0
+    const { data: count } = await api.get('/suppliers/count', { params: countParams })
+    pagination.suppliers.total = count
 
     suppliers.value = Array.isArray(data) ? data : []
     suppliers.value.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-CN'))
@@ -960,12 +923,12 @@ async function loadTypes() {
     const { data } = await api.get('/types/', { params })
 
     // 获取总数
-    const countParams = { limit: 1000 }
+    const countParams = {}
     if (typeSearchKeyword.value.trim()) {
       countParams.q = typeSearchKeyword.value.trim()
     }
-    const allTypes = await api.get('/types/', { params: countParams })
-    pagination.types.total = Array.isArray(allTypes.data) ? allTypes.data.length : 0
+    const { data: count } = await api.get('/types/count', { params: countParams })
+    pagination.types.total = count
 
     types.value = Array.isArray(data) ? data : []
   } catch (error) {
@@ -1029,8 +992,7 @@ function openSupplierDialog(supplier) {
     supplierDialog.form.name = supplier.name || ''
     supplierDialog.form.phone_number = supplier.phone_number || ''
     supplierDialog.form.email = supplier.email || ''
-    supplierDialog.form.position = supplier.position || ''
-    supplierDialog.form.company_id = typeof supplier.company_id === 'number' ? supplier.company_id : PERSONAL_COMPANY_VALUE
+    supplierDialog.form.address = supplier.address || ''
   }
 }
 
@@ -1174,15 +1136,9 @@ async function submitSupplier() {
       ElMessage.error('请输入供应商名称')
       return
     }
-    const numericCompanyId = Number(payload.company_id)
-    if (!Number.isFinite(numericCompanyId) || numericCompanyId < 0) {
-      ElMessage.error('请选择所属公司')
-      return
-    }
-    payload.company_id = numericCompanyId
     payload.phone_number = payload.phone_number?.trim() || null
     payload.email = payload.email?.trim() || null
-    payload.position = payload.position?.trim() || null
+    payload.address = payload.address?.trim() || null
     if (supplierDialog.isEdit && supplierId) {
       await api.put(`/suppliers/${supplierId}`, payload)
       ElMessage.success('更新供应商成功')

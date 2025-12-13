@@ -138,30 +138,16 @@
             </el-table-column>
             <el-table-column label="状态" width="110">
               <template #default="{ row }">
-                <el-popover 
-                  v-model:visible="statusPopoverVisible[row.id]" 
-                  placement="top" 
-                  trigger="click"
-                  popper-class="status-popover"
-                >
+                <el-popover v-model:visible="statusPopoverVisible[row.id]" placement="top" trigger="click"
+                  popper-class="status-popover">
                   <template #reference>
                     <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
                   </template>
-                  <el-select
-                    v-model="editingStatus[row.id]"
-                    :loading="isUpdatingStatus[row.id]"
-                    :disabled="isUpdatingStatus[row.id]"
-                    placeholder="选择状态"
-                    style="width: 100%"
+                  <el-select v-model="editingStatus[row.id]" :loading="isUpdatingStatus[row.id]"
+                    :disabled="isUpdatingStatus[row.id]" placeholder="选择状态" style="width: 100%"
                     @change="() => handleStatusChange(row.id, editingStatus[row.id])"
-                    @visible-change="(visible) => handleStatusSelectVisibleChange(visible, row)"
-                  >
-                    <el-option 
-                      v-for="(option, key) in statusOptions" 
-                      :key="key" 
-                      :label="option.label" 
-                      :value="key"
-                    />
+                    @visible-change="(visible) => handleStatusSelectVisibleChange(visible, row)">
+                    <el-option v-for="(option, key) in statusOptions" :key="key" :label="option.label" :value="key" />
                   </el-select>
                 </el-popover>
               </template>
@@ -379,18 +365,18 @@ async function handleStatusChange(id, newStatus) {
     statusPopoverVisible[id] = false
     return
   }
-  
+
   try {
     // 设置加载状态
     isUpdatingStatus[id] = true
-    
+
     // 调用API更新状态
     auth.ensureInterceptors()
     await api.put(`/purchases/${id}`, { status: newStatus })
-    
+
     // 更新本地数据
     purchase.status = newStatus
-    
+
     // 显示成功提示
     ElMessage.success('状态更新成功')
   } catch (error) {
@@ -416,7 +402,7 @@ function validateImageFile(file) {
 }
 
 // 图片压缩大小限制
-const MAX_IMAGE_SIZE = 200 * 1024
+const MAX_IMAGE_SIZE = 50 * 1024
 
 /**
  * 压缩图片到指定大小以下
@@ -434,9 +420,9 @@ async function compressImage(file) {
     reader.onload = function (event) {
       const img = new Image()
       img.onload = function () {
-        // 创建Canvas元素
-        const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
+        // 创建Canvas元素（需要在压缩过程中可重新赋值）
+        let canvas = document.createElement('canvas')
+        let ctx = canvas.getContext('2d')
 
         // 计算压缩后的尺寸（保持宽高比）
         let width = img.width
@@ -465,19 +451,19 @@ async function compressImage(file) {
         // 循环压缩直到文件大小小于限制大小
         function compressStep() {
           compressedDataUrl = canvas.toDataURL(file.type, quality)
-          
+
           // 将DataURL转换为Blob
           const byteString = atob(compressedDataUrl.split(',')[1])
           const mimeString = compressedDataUrl.split(',')[0].split(':')[1].split(';')[0]
           const ab = new ArrayBuffer(byteString.length)
           const ia = new Uint8Array(ab)
-          
+
           for (let i = 0; i < byteString.length; i++) {
             ia[i] = byteString.charCodeAt(i)
           }
-          
+
           compressedFile = new File([ab], file.name, { type: mimeString })
-          
+
           // 如果文件仍然大于限制大小，继续降低质量
           if (compressedFile.size > MAX_IMAGE_SIZE && quality > 0.1) {
             quality -= 0.1
@@ -512,20 +498,20 @@ async function compressImage(file) {
 async function handleFormImageChange(uploadFile) {
   const file = uploadFile?.raw || uploadFile
   if (!validateImageFile(file)) return false
-  
+
   try {
     // 压缩图片
     const originalSize = file.size
     const compressedFile = await compressImage(file)
     formImageFile.value = compressedFile
-    
+
     // 显示压缩成功提示（如果进行了压缩）
     if (originalSize !== compressedFile.size) {
       const originalSizeKB = (originalSize / 1024).toFixed(1)
       const compressedSizeKB = (compressedFile.size / 1024).toFixed(1)
       ElMessage.success(`图片已压缩：${originalSizeKB}KB → ${compressedSizeKB}KB`)
     }
-    
+
     const name = compressedFile.name || 'purchase-image'
     const url = URL.createObjectURL(compressedFile)
     formImageList.value = [{ name, url }]
@@ -588,14 +574,14 @@ async function handleRowImageUpload({ file, onError, onSuccess }, row) {
     // 压缩图片
     const originalSize = file.size
     const compressedFile = await compressImage(file)
-    
+
     // 显示压缩成功提示（如果进行了压缩）
     if (originalSize !== compressedFile.size) {
       const originalSizeKB = (originalSize / 1024).toFixed(1)
       const compressedSizeKB = (compressedFile.size / 1024).toFixed(1)
       ElMessage.success(`图片已压缩：${originalSizeKB}KB → ${compressedSizeKB}KB`)
     }
-    
+
     const formData = new FormData()
     formData.append('image_file', compressedFile)
     auth.ensureInterceptors()
@@ -816,20 +802,23 @@ function supplierName(id) {
 <style scoped>
 .purchases {
   width: 100%;
-  
+
   /* 调整弹出框样式，确保显示在表格单元格上方 */
   :deep(.status-popover) {
     min-width: 140px;
     padding: 8px;
   }
+
   /* 确保标签可点击区域足够大 */
   :deep(.el-tag) {
     cursor: pointer;
     transition: all 0.3s;
   }
+
   :deep(.el-tag:hover) {
     opacity: 0.8;
   }
+
   /* 确保选择器在加载时有明显的指示 */
   :deep(.el-select__wrap) {
     min-height: 32px;
