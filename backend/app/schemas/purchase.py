@@ -39,6 +39,8 @@ class PurchaseUpdate(BaseModel):
 
 class PurchaseRead(PurchaseBase):
     id: int
+    supplier_name: Optional[str] = None
+    type_name: Optional[str] = None
     # Pydantic v2 style config
     model_config = ConfigDict(from_attributes=True)
 

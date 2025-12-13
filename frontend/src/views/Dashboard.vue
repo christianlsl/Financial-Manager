@@ -69,8 +69,8 @@
               <el-table-column label="项目">
                 <template #default="{ row }">{{ row.item_name || '未填写' }}</template>
               </el-table-column>
-              <el-table-column label="公司" width="140">
-                <template #default="{ row }">{{ customerCompanyName(row.customer_id) }}</template>
+              <el-table-column label="供应商" width="140">
+                <template #default="{ row }">{{ row.supplier_name || '—' }}</template>
               </el-table-column>
               <el-table-column prop="total_price" label="金额" width="100">
                 <template #default="{ row }">¥ {{ formatAmount(row.total_price) }}</template>
@@ -78,7 +78,7 @@
               <el-table-column label="状态" width="100">
                 <template #default="{ row }">
                   <el-tag :type="purchaseStatusType(row.status)" size="small">{{ purchaseStatusLabel(row.status)
-                  }}</el-tag>
+                    }}</el-tag>
                 </template>
               </el-table-column>
             </el-table>
@@ -100,7 +100,7 @@
                 <template #default="{ row }">{{ row.item_name || '未填写' }}</template>
               </el-table-column>
               <el-table-column label="公司" width="140">
-                <template #default="{ row }">{{ customerCompanyName(row.customer_id) }}</template>
+                <template #default="{ row }">{{ row.company_name || '—' }}</template>
               </el-table-column>
               <el-table-column prop="total_price" label="金额" width="100">
                 <template #default="{ row }">¥ {{ formatAmount(row.total_price) }}</template>
@@ -132,7 +132,6 @@ const router = useRouter()
 
 const purchases = ref([])
 const sales = ref([])
-const customers = ref([])
 const statistics = ref({
   monthly: {
     purchase_total: 0,
@@ -159,12 +158,6 @@ const recentSales = computed(() => sales.value.slice(0, 5))
 
 function formatAmount(value) {
   return Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-function customerCompanyName(customerId) {
-  const customer = customers.value.find((c) => c.id === customerId)
-  if (!customer) return '—'
-  return customer.company_name || '—'
 }
 
 function purchaseStatusLabel(status) {
@@ -210,22 +203,16 @@ async function loadData() {
     const [
       { data: purchaseData },
       { data: saleData },
-      { data: customerGroups },
       { data: statisticsData }
     ] = await Promise.all([
       api.get('/purchases/', { params: { limit: 100, skip: 0 } }),
       api.get('/sales/', { params: { limit: 100, skip: 0 } }),
-      api.get('/customers/', { params: { limit: 300 } }),
       api.get('/statistics/summary')
     ])
     const purchaseItems = Array.isArray(purchaseData?.items) ? purchaseData.items : (Array.isArray(purchaseData) ? purchaseData : [])
     const saleItems = Array.isArray(saleData?.items) ? saleData.items : (Array.isArray(saleData) ? saleData : [])
     purchases.value = purchaseItems.sort((a, b) => new Date(b.date) - new Date(a.date))
     sales.value = saleItems.sort((a, b) => new Date(b.date) - new Date(a.date))
-    customers.value = (customerGroups || []).flatMap((group) => {
-      const groupCompanyId = typeof group.company_id === 'number' ? group.company_id : 0
-      return (group.customers || []).map((c) => ({ ...c, company_id: typeof c.company_id === 'number' ? c.company_id : groupCompanyId }))
-    })
 
     // 更新统计数据并确保数值类型正确
     if (statisticsData) {

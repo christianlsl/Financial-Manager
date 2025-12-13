@@ -230,14 +230,15 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="!isStrangerCustomer" label="公司" prop="company_id">
-          <el-select v-model="form.company_id" placeholder="选择公司" filterable clearable style="width: 100%">
+          <el-select v-model="form.company_id" placeholder="选择公司" filterable clearable style="width: 100%"
+            @change="handleFormCompanyChange">
             <el-option :key="0" :label="'个人客户'" :value="0" />
             <el-option v-for="company in companies" :key="company.id" :label="company.name" :value="company.id" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="!isStrangerCustomer" label="部门" prop="department_id">
           <el-select v-model="form.department_id" placeholder="选择部门" clearable filterable style="width: 100%"
-            :disabled="!showDepartmentSelect">
+            :disabled="!showDepartmentSelect" @change="handleFormDepartmentChange">
             <el-option v-for="dept in formDepartmentOptions" :key="dept.id" :label="dept.name" :value="dept.id" />
           </el-select>
         </el-form-item>
@@ -1053,6 +1054,15 @@ function handlePageSizeChange(size) {
   pagination.pageSize = size
   pagination.page = 1
   loadSales()
+}
+
+function handleFormCompanyChange() {
+  form.department_id = null
+  form.customer_id = null
+}
+
+function handleFormDepartmentChange() {
+  form.customer_id = null
 }
 
 function handleCustomerTypeChange() {

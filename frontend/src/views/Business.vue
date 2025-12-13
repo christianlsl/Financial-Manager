@@ -37,7 +37,8 @@
             </div>
             <div class="catalogs__table-grid">
               <el-table :data="filteredCustomers" border stripe v-loading="loadingCustomers"
-                @current-change="handleCustomerSelect">
+                @current-change="handleCustomerSelect" row-key="key"
+                :tree-props="{ children: 'children', hasChildren: 'hasChildren' }" default-expand-all>
                 <el-table-column prop="name" label="客户名称" min-width="200" />
                 <el-table-column prop="company_name" label="所属公司" min-width="180">
                   <template #default="{ row }">{{ row.company_name || '—' }}</template>
@@ -56,7 +57,7 @@
                 </el-table-column>
                 <el-table-column label="操作" width="160" fixed="right">
                   <template #default="{ row }">
-                    <el-space>
+                    <el-space v-if="row.type === 'customer'">
                       <el-button type="primary" link size="small" @click="openCustomerDialog(row)">编辑</el-button>
                       <el-popconfirm title="确认删除该客户？" confirm-button-text="删除" cancel-button-text="取消"
                         @confirm="removeCustomer(row.id)">
@@ -106,7 +107,7 @@
             <div class="catalogs__table-grid">
               <el-table :data="filteredCompanies" border stripe v-loading="loadingCompanies"
                 @current-change="handleCompanySelect">
-                <el-table-column prop="name" label="公司名称" min-width="160" />
+                <el-table-column prop="name" label="公司名称" min-width="200" />
                 <el-table-column prop="legal_person" label="法人代表" min-width="120">
                   <template #default="{ row }">{{ row.legal_person || '—' }}</template>
                 </el-table-column>
@@ -154,7 +155,7 @@
                 </el-button>
               </div>
               <div class="catalogs__table-grid">
-                <el-table :data="filteredDepartments" border stripe v-loading="loadingDepartments">
+                <el-table :data="filteredDepartments" border stripe v-loading="loadingCompanies">
                   <el-table-column prop="name" label="部门名称" min-width="200" />
                   <el-table-column label="操作" width="160" fixed="right">
                     <template #default="{ row }">
@@ -171,7 +172,7 @@
                   </el-table-column>
                 </el-table>
               </div>
-              <el-empty v-if="!filteredDepartments.length && !loadingDepartments" description="暂无部门数据" />
+              <el-empty v-if="!filteredDepartments.length && !loadingCompanies" description="暂无部门数据" />
             </div>
           </el-tab-pane>
         </el-tabs>
@@ -287,7 +288,7 @@
           <el-input v-model="customerDialog.form.name" placeholder="请输入客户名称" />
         </el-form-item>
         <el-form-item label="所属公司" prop="company_id">
-          <el-select v-model="customerDialog.form.company_id" placeholder="请选择公司或个人">
+          <el-select v-model="customerDialog.form.company_id" filterable clearable placeholder="请选择公司或个人">
             <el-option :value="PERSONAL_COMPANY_VALUE" label="个人客户" />
             <el-option v-for="item in companies" :key="item.id" :value="item.id" :label="item.name" />
           </el-select>
@@ -423,10 +424,8 @@ const loadingCompanies = ref(false)
 const loadingCustomers = ref(false)
 const loadingTypes = ref(false)
 const loadingSuppliers = ref(false)
-const loadingDepartments = ref(false)
 const customers = ref([])
 const suppliers = ref([])
-const departments = ref([])
 const selectedCompany = ref(null)
 
 const ALL_COMPANY_VALUE = 'all'
@@ -462,32 +461,8 @@ const pagination = reactive({
 })
 
 const filteredCustomers = computed(() => {
-  let result = customers.value
-
-  // 应用公司筛选
-  const companyFilter = customerFilterCompanyId.value
-  if (companyFilter === ALL_COMPANY_VALUE) {
-    result = customers.value
-  } else if (companyFilter === PERSONAL_COMPANY_VALUE) {
-    result = customers.value.filter((item) => item.company_id === 0)
-  } else {
-    result = customers.value.filter((item) => item.company_id === companyFilter)
-  }
-
-  // 应用搜索关键词
-  const keyword = customerSearchKeyword.value.toLowerCase().trim()
-  if (keyword) {
-    result = result.filter((item) => {
-      return (
-        (item.name && item.name.toLowerCase().includes(keyword)) ||
-        (item.phone_number && item.phone_number.toLowerCase().includes(keyword)) ||
-        (item.email && item.email.toLowerCase().includes(keyword)) ||
-        (item.position && item.position.toLowerCase().includes(keyword))
-      )
-    })
-  }
-
-  return result
+  // 后端已处理筛选
+  return customers.value
 })
 
 const companyDialog = reactive({
@@ -607,12 +582,14 @@ function createDepartmentForm() {
 const customerDepartmentOptions = computed(() => {
   const companyId = customerDialog.form.company_id
   if (!companyId || companyId === PERSONAL_COMPANY_VALUE) return []
-  return departments.value.filter((item) => item.company_id === companyId)
+  const company = companies.value.find(c => c.id === companyId)
+  return company ? company.departments : []
 })
 
 const filteredDepartments = computed(() => {
   if (!selectedCompany.value) return []
-  return departments.value.filter((item) => item.company_id === selectedCompany.value.id)
+  const company = companies.value.find(c => c.id === selectedCompany.value.id)
+  return company ? company.departments : []
 })
 
 const filteredCompanies = computed(() => {
@@ -765,8 +742,8 @@ watch(
       customerDialog.form.department_id = null
       return
     }
-    const dept = departments.value.find((item) => item.id === customerDialog.form.department_id)
-    if (dept && dept.company_id !== companyId) {
+    const dept = customerDepartmentOptions.value.find((item) => item.id === customerDialog.form.department_id)
+    if (!dept) {
       customerDialog.form.department_id = null
     }
   }
@@ -791,6 +768,20 @@ async function loadCompanies() {
     pagination.companies.total = count
 
     companies.value = Array.isArray(data) ? data : []
+
+    if (selectedCompany.value) {
+      const updatedCompany = companies.value.find(c => c.id === selectedCompany.value.id)
+      if (updatedCompany) {
+        selectedCompany.value = updatedCompany
+      } else {
+        // If the selected company is not in the current page/list anymore, we might want to deselect it or keep the stale one?
+        // For now, let's keep it but maybe we should warn or handle it.
+        // Actually, if we are just refreshing the list (e.g. after add department), it should be there unless we changed pages.
+        // If we changed pages, selectedCompany might not be in the new list.
+        // But submitDepartment calls loadCompanies which uses current pagination.
+        // So it should be fine.
+      }
+    }
 
     if (typeof customerFilterCompanyId.value === 'number' && customerFilterCompanyId.value > 0) {
       const exists = companies.value.some((item) => item.id === customerFilterCompanyId.value)
@@ -832,24 +823,8 @@ async function loadCustomers() {
     const { data: count } = await api.get('/customers/count', { params: countParams })
     pagination.customers.total = count
 
-    // 处理数据格式化，保持与原代码相同的格式转换逻辑
-    const formattedData = (data || []).flatMap((group) => {
-      const resolvedGroupCompanyId = typeof group.company_id === 'number' ? group.company_id : PERSONAL_COMPANY_VALUE
-      return (group.customers || []).map((customer) => {
-        const customerCompanyId = typeof customer.company_id === 'number' ? customer.company_id : resolvedGroupCompanyId
-        return {
-          ...customer,
-          company_id: customerCompanyId
-        }
-      })
-    })
-
-    customers.value = formattedData.sort((a, b) => {
-      const companyA = a.company_id ?? -1
-      const companyB = b.company_id ?? -1
-      if (companyA !== companyB) return companyA - companyB
-      return a.id - b.id
-    })
+    // 后端已返回树形结构，直接赋值
+    customers.value = data || []
   } catch (error) {
     const message = error?.response?.data?.detail || error?.message || '加载客户列表失败'
     ElMessage.error(message)
@@ -888,30 +863,6 @@ async function loadSuppliers() {
   }
 }
 
-async function loadDepartments() {
-  loadingDepartments.value = true
-  try {
-    const { data } = await api.get('/departments/', { params: { limit: 300 } })
-    const entries = Array.isArray(data) ? data : []
-    departments.value = entries
-      .map((dept) => ({
-        ...dept,
-        partner_company_ids: Array.isArray(dept.partner_company_ids) ? dept.partner_company_ids : []
-      }))
-      .sort((a, b) => {
-        const companyA = a.company_id ?? -1
-        const companyB = b.company_id ?? -1
-        if (companyA !== companyB) return companyA - companyB
-        return (a.name || '').localeCompare(b.name || '', 'zh-CN')
-      })
-  } catch (error) {
-    const message = error?.response?.data?.detail || error?.message || '加载部门列表失败'
-    ElMessage.error(message)
-  } finally {
-    loadingDepartments.value = false
-  }
-}
-
 async function loadTypes() {
   loadingTypes.value = true
   try {
@@ -942,7 +893,7 @@ async function loadTypes() {
 async function loadAll() {
   loading.value = true
   try {
-    await Promise.all([loadCompanies(), loadCustomers(), loadSuppliers(), loadDepartments(), loadTypes()])
+    await Promise.all([loadCustomers(), loadSuppliers(), loadCompanies(), loadTypes()])
   } finally {
     loading.value = false
   }
@@ -954,7 +905,14 @@ function openCompanyDialog(company) {
   Object.assign(companyDialog.form, createCompanyForm(), company || {})
 }
 
-function openCustomerDialog(customer) {
+async function openCustomerDialog(customer) {
+  try {
+    const { data } = await api.get('/companies/', { params: { limit: 1000 } })
+    companies.value = Array.isArray(data) ? data : []
+  } catch (error) {
+    console.error('Failed to load companies', error)
+  }
+
   customerDialog.visible = true
   customerDialog.isEdit = Boolean(customer)
   Object.assign(customerDialog.form, createCustomerForm())
@@ -1009,14 +967,6 @@ function openDepartmentDialog(department, companyId) {
   }
 }
 
-function handleDepartmentEdit(department) {
-  openDepartmentDialog(department)
-}
-
-function handleDepartmentDelete(department) {
-  removeDepartment(department)
-}
-
 async function submitCompany() {
   if (!companyFormRef.value) return
   try {
@@ -1058,6 +1008,9 @@ async function removeCompany(id) {
     ElMessage.success('删除公司成功')
     await loadCompanies()
     await loadCustomers()
+    if (selectedCompany.value && selectedCompany.value.id === id) {
+      selectedCompany.value = null
+    }
   } catch (error) {
     const message = error?.response?.data?.detail || error?.message || '删除公司失败'
     ElMessage.error(message)
@@ -1196,8 +1149,8 @@ async function submitDepartment() {
       ElMessage.success('创建部门成功')
     }
     departmentDialog.visible = false
-    // 重新加载部门列表，确保在公司tab中也能看到最新数据
-    await loadDepartments()
+    // 重新加载公司列表，确保在公司tab中也能看到最新数据
+    await loadCompanies()
   } catch (error) {
     if (error?.name === 'ElFormError') return
     const message = error?.response?.data?.detail || error?.message || '保存部门失败'
@@ -1211,8 +1164,8 @@ async function removeDepartment(id) {
   try {
     await api.delete(`/departments/${id}`)
     ElMessage.success('删除部门成功')
-    // 重新加载部门列表，确保在公司tab中也能看到最新数据
-    await loadDepartments()
+    // 重新加载公司列表，确保在公司tab中也能看到最新数据
+    await loadCompanies()
   } catch (error) {
     const message = error?.response?.data?.detail || error?.message || '删除部门失败'
     ElMessage.error(message)

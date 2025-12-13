@@ -107,10 +107,10 @@
               <template #default="{ row }">{{ row.item_name || '未填写' }}</template>
             </el-table-column>
             <el-table-column label="供应商" width="180">
-              <template #default="{ row }">{{ supplierName(row.supplier_id) }}</template>
+              <template #default="{ row }">{{ row.supplier_name || '—' }}</template>
             </el-table-column>
             <el-table-column label="类型" width="140">
-              <template #default="{ row }">{{ typeName(row.type_id) }}</template>
+              <template #default="{ row }">{{ row.type_name || '—' }}</template>
             </el-table-column>
             <el-table-column label="数量" width="90" prop="items_count" />
             <el-table-column label="单价" width="110">
@@ -340,13 +340,6 @@ function statusLabel(status) {
 
 function statusType(status) {
   return statusOptions.value[status]?.type || 'info'
-}
-
-
-
-function typeName(id) {
-  if (!id) return '—'
-  return types.value.find((item) => item.id === id)?.name || '—'
 }
 
 // 处理状态选择器显示状态变化
@@ -793,10 +786,6 @@ function supplierLabel(supplier) {
   return supplier.name || `供应商 #${supplier.id}`
 }
 
-function supplierName(id) {
-  const supplier = suppliers.value.find((item) => item.id === id)
-  return supplier ? supplierLabel(supplier) : `供应商 #${id}`
-}
 </script>
 
 <style scoped>

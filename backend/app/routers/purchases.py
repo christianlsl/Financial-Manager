@@ -6,13 +6,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from ..db import get_db
 from ..deps import get_current_user
-from ..models.company import Company
 from ..models.type import Type
 from ..models.supplier import Supplier
 from ..models.purchase import Purchase, PurchaseStatusEnum
@@ -169,7 +168,6 @@ def list_purchases(
     limit: int = 100,
     type_id: int | None = None,
     supplier_id: int | None = None,
-    company_id: int | None = None,
     status: str | None = None,
     search: str | None = None,
     date_from: date | None = None,
@@ -182,20 +180,12 @@ def list_purchases(
     """List purchases with advanced filtering similar to sales."""
     query = db.query(Purchase).filter(Purchase.owner_id == current_user.id)
     joined_supplier = False
-    joined_company = False
 
     def ensure_supplier_join():
         nonlocal query, joined_supplier
         if not joined_supplier:
             query = query.join(Supplier)
             joined_supplier = True
-
-    def ensure_company_join():
-        nonlocal query, joined_company
-        ensure_supplier_join()
-        if not joined_company:
-            query = query.outerjoin(Company, Supplier.company_id == Company.id)
-            joined_company = True
 
     if status:
         normalized_status = status.strip().lower()
@@ -210,17 +200,13 @@ def list_purchases(
         query = query.filter(Purchase.type_id == type_id)
     if supplier_id is not None:
         query = query.filter(Purchase.supplier_id == supplier_id)
-    if company_id is not None:
-        ensure_supplier_join()
-        query = query.filter(Supplier.company_id == company_id)
     if search and search.strip():
-        ensure_company_join()
+        ensure_supplier_join()
         keyword = f"%{search.strip().lower()}%"
         query = query.filter(
             or_(
                 func.lower(func.coalesce(Purchase.item_name, "")).like(keyword),
                 func.lower(func.coalesce(Supplier.name, "")).like(keyword),
-                func.lower(func.coalesce(Company.name, "")).like(keyword),
             )
         )
     if date_from is not None:
@@ -252,8 +238,32 @@ def list_purchases(
         query = query.filter(Purchase.total_price <= normalized_amount_max)
 
     total = query.count()
+
+    # Add eager loading to avoid N+1 queries
+    query = query.options(
+        joinedload(Purchase.supplier),
+        joinedload(Purchase.type),
+    )
+
     items = query.order_by(Purchase.date.desc(), Purchase.id.desc()).offset(skip).limit(limit).all()
-    return PurchaseList(items=items, total=total)
+
+    enriched = []
+    for purchase in items:
+        supplier = purchase.supplier
+        purchase_type = getattr(purchase, "type", None)
+
+        supplier_name = supplier.name if supplier else None
+        type_name = purchase_type.name if purchase_type else None
+
+        enriched.append(
+            PurchaseRead(
+                **purchase.__dict__,
+                supplier_name=supplier_name,
+                type_name=type_name,
+            )
+        )
+
+    return PurchaseList(items=enriched, total=total)
 
 
 @router.post("/", response_model=PurchaseRead)
@@ -364,7 +374,9 @@ async def update_purchase(
     db.commit()
     db.refresh(purchase)
 
-    if previous_image_url and ((new_image_url and previous_image_url != new_image_url) or remove_image_requested):
+    if previous_image_url and (
+        (new_image_url and previous_image_url != new_image_url) or remove_image_requested
+    ):
         try:
             uploader.delete(previous_image_url)
         except ImageUploadError as exc:  # pragma: no cover - best effort cleanup
@@ -381,19 +393,19 @@ def delete_purchase(
     )
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
-    
+
     # 记录图片URL以便在删除记录前删除图片
     image_url = purchase.image_url
-    
+
     # 删除数据库记录
     db.delete(purchase)
     db.commit()
-    
+
     # 最佳努力删除七牛云上的图片
     if image_url:
         try:
             uploader.delete(image_url)
         except ImageUploadError as exc:
             logger.warning("Failed to delete purchase image %s: %s", image_url, exc)
-    
+
     return {"ok": True}
