@@ -134,6 +134,8 @@ The frontend is configured to use relative paths (e.g., `/api/users`) for API ca
 
    ```bash
    scp -r ./* root@47.100.89.197:~/Financial-Manager/backend
+
+   # scp -r ./app/* root@47.100.89.197:~/Financial-Manager/backend/app
    ```
 
 3. ```bash
@@ -189,7 +191,9 @@ The frontend is configured to use relative paths (e.g., `/api/users`) for API ca
 3. 上传./dist到服务器静态文件目录（默认：'/usr/share/nginx/html'）
 
    ```bash
-   scp -r .\dist\* root@47.100.89.197:/usr/share/nginx/html
+   scp -r ./dist/* root@47.100.89.197:/usr/share/nginx/html
+
+   sudo chmod -R 755 /usr/share/nginx/html
    ```
 
 #### 编辑nginx反向代理

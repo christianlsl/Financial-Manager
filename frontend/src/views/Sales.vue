@@ -308,47 +308,116 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Search, Download } from '@element-plus/icons-vue'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 // CSV导出相关
 async function downloadCsv() {
   if (!sales.value.length) {
     ElMessage.warning('暂无数据可导出')
     return
   }
-  const headers = [
-    '日期',
-    '项目',
-    '公司',
-    '部门',
-    '客户',
-    '类型',
-    '数量',
-    '单价',
-    '金额',
-    '图片链接',
-    '状态',
-    '备注'
+
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('销售表')
+
+  worksheet.columns = [
+    { header: '日期', key: 'date', width: 15 },
+    { header: '项目', key: 'item_name', width: 20 },
+    { header: '公司', key: 'company_name', width: 20 },
+    { header: '部门', key: 'department_name', width: 15 },
+    { header: '客户', key: 'customer_name', width: 15 },
+    { header: '类型', key: 'type_name', width: 15 },
+    { header: '数量', key: 'items_count', width: 10 },
+    { header: '单价', key: 'unit_price', width: 15 },
+    { header: '金额', key: 'total_price', width: 15 },
+    { header: '图片', key: 'image', width: 20 },
+    { header: '状态', key: 'status', width: 15 },
+    { header: '备注', key: 'notes', width: 30 }
   ]
-  const rows = sales.value.map(row => ({
-    '日期': row.date || '',
-    '项目': row.item_name || '',
-    '公司': row.company_name || '—',
-    '部门': row.department_name || '—',
-    '客户': row.customer_name || '—',
-    '类型': row.type_name || '—',
-    '数量': row.items_count ?? '',
-    '单价': row.unit_price !== undefined && row.unit_price !== null ? formatAmount(row.unit_price) : '',
-    '金额': row.total_price !== undefined && row.total_price !== null ? formatAmount(row.total_price) : '',
-    '图片链接': row.image_url || '',
-    '状态': statusLabel(row.status),
-    '备注': row.notes || ''
-  }))
-  // 使用SheetJS生成xlsx
-  const ws = XLSX.utils.json_to_sheet(rows, { header: headers })
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, '销售表')
-  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
-  const url = URL.createObjectURL(new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+
+  // Process rows sequentially to handle async image fetching
+  for (let i = 0; i < sales.value.length; i++) {
+    const row = sales.value[i]
+    const rowIndex = i + 2 // 1-based, +1 for header
+
+    const rowData = {
+      date: row.date || '',
+      item_name: row.item_name || '',
+      company_name: row.company_name || '—',
+      department_name: row.department_name || '—',
+      customer_name: row.customer_name || '—',
+      type_name: row.type_name || '—',
+      items_count: row.items_count ?? '',
+      unit_price: row.unit_price !== undefined && row.unit_price !== null ? formatAmount(row.unit_price) : '',
+      total_price: row.total_price !== undefined && row.total_price !== null ? formatAmount(row.total_price) : '',
+      status: statusLabel(row.status),
+      notes: row.notes || ''
+    }
+
+    const addedRow = worksheet.addRow(rowData)
+
+    if (row.image_url) {
+      try {
+        const response = await fetch(row.image_url)
+        const buffer = await response.arrayBuffer()
+        const contentType = response.headers.get('content-type')
+        let extension = 'png'
+        if (contentType) {
+          if (contentType.includes('jpeg') || contentType.includes('jpg')) extension = 'jpeg'
+          else if (contentType.includes('png')) extension = 'png'
+          else if (contentType.includes('gif')) extension = 'gif'
+        }
+
+        // Calculate dimensions based on aspect ratio
+        let imgWidth = 150
+        let imgHeight = 100
+        try {
+          const blob = new Blob([buffer])
+          const url = URL.createObjectURL(blob)
+          const img = new Image()
+          img.src = url
+          await new Promise((resolve) => {
+            img.onload = resolve
+            img.onerror = resolve
+          })
+          if (img.width && img.height) {
+            const maxDimension = 100
+            if (img.width > img.height) {
+              imgWidth = maxDimension
+              imgHeight = (img.height / img.width) * maxDimension
+            } else {
+              imgHeight = maxDimension
+              imgWidth = (img.width / img.height) * maxDimension
+            }
+          }
+          URL.revokeObjectURL(url)
+        } catch (err) {
+          console.warn('Failed to calculate image dimensions', err)
+        }
+
+        const imageId = workbook.addImage({
+          buffer: buffer,
+          extension: extension,
+        })
+
+        worksheet.addImage(imageId, {
+          tl: { col: 9, row: rowIndex - 1 },
+          ext: { width: imgWidth, height: imgHeight }
+        })
+
+        // Set row height to accommodate image
+        addedRow.height = 80
+      } catch (e) {
+        console.error('Failed to fetch image for excel', e)
+        addedRow.getCell('image').value = '图片加载失败'
+      }
+    } else {
+      addedRow.getCell('image').value = '无'
+    }
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
   link.setAttribute('download', `销售表格_${new Date().toISOString().slice(0, 10)}.xlsx`)
