@@ -134,26 +134,26 @@
         <el-empty v-if="!sales.length && !loading" description="暂无销售记录" />
         <div v-else class="sales__table-grid">
           <el-table :data="sales" border stripe>
-            <el-table-column prop="date" label="日期" width="120" />
-            <el-table-column label="项目">
+            <el-table-column prop="date" label="日期" width="100" />
+            <el-table-column label="项目" min-width="180">
               <template #default="{ row }">{{ row.item_name || '未填写' }}</template>
             </el-table-column>
-            <el-table-column label="公司" width="160">
-              <template #default="{ row }">{{ customerCompanyName(row.customer_id) }}</template>
+            <el-table-column label="公司" width="130">
+              <template #default="{ row }">{{ row.company_name || '—' }}</template>
             </el-table-column>
-            <el-table-column label="部门" width="140">
+            <el-table-column label="部门" width="80">
               <template #default="{ row }">
-                {{ row.customer_department?.name || '—' }}
+                {{ row.department_name || '—' }}
               </template>
             </el-table-column>
-            <el-table-column label="客户" width="180">
-              <template #default="{ row }">{{ customerName(row.customer_id) }}</template>
+            <el-table-column label="客户" width="100">
+              <template #default="{ row }">{{ row.customer_name || '—' }}</template>
             </el-table-column>
-            <el-table-column label="类型" width="140">
-              <template #default="{ row }">{{ typeName(row.type_id) }}</template>
+            <el-table-column label="类型" width="100">
+              <template #default="{ row }">{{ row.type_name || '—' }}</template>
             </el-table-column>
-            <el-table-column label="数量" width="90" prop="items_count" />
-            <el-table-column label="单价" width="110">
+            <el-table-column label="数量" width="50" prop="items_count" />
+            <el-table-column label="单价" width="100">
               <template #default="{ row }">¥ {{ formatAmount(row.unit_price) }}</template>
             </el-table-column>
             <el-table-column label="金额" width="110">
@@ -331,10 +331,10 @@ async function downloadCsv() {
   const rows = sales.value.map(row => ({
     '日期': row.date || '',
     '项目': row.item_name || '',
-    '公司': customerCompanyName(row.customer_id),
-    '部门': row.customer_department?.name || '—',
-    '客户': customerName(row.customer_id),
-    '类型': typeName(row.type_id),
+    '公司': row.company_name || '—',
+    '部门': row.department_name || '—',
+    '客户': row.customer_name || '—',
+    '类型': row.type_name || '—',
     '数量': row.items_count ?? '',
     '单价': row.unit_price !== undefined && row.unit_price !== null ? formatAmount(row.unit_price) : '',
     '金额': row.total_price !== undefined && row.total_price !== null ? formatAmount(row.total_price) : '',
@@ -366,7 +366,6 @@ const sales = ref([])
 const companies = ref([])
 const customers = ref([])
 const types = ref([])
-const departments = ref([])
 const loading = ref(false)
 const saving = ref(false)
 const statusPopoverVisible = reactive({})
@@ -428,14 +427,16 @@ const statusOptions = computed(() => ({
 
 const departmentOptions = computed(() => {
   if (filters.companyId) {
-    return departments.value.filter((d) => d.company_id === filters.companyId)
+    const company = companies.value.find(c => c.id === filters.companyId)
+    return company ? company.departments : []
   }
-  return {}
+  return []
 })
 
 const formDepartmentOptions = computed(() => {
   if (form.company_id && form.company_id !== 0) {
-    return departments.value.filter((d) => d.company_id === form.company_id)
+    const company = companies.value.find(c => c.id === form.company_id)
+    return company ? company.departments : []
   }
   return []
 })
@@ -600,31 +601,9 @@ async function handleStatusChange(id) {
   }
 }
 
-function companyName(id) {
-  if (id === 0) return '个人客户'
-  if (id === null || id === undefined) return '—'
-  return companies.value.find((item) => item.id === id)?.name || '—'
-}
-
-function typeName(id) {
-  if (!id) return '—'
-  return types.value.find((item) => item.id === id)?.name || '—'
-}
-
 function customerLabel(customer) {
   if (!customer) return '—'
   return customer.name || `客户 #${customer.id}`
-}
-
-function customerName(id) {
-  const customer = customers.value.find((item) => item.id === id)
-  return customer ? customer.name : (id ? `客户 #${id}` : '陌生客户')
-}
-
-function customerCompanyName(id) {
-  const customer = customers.value.find((item) => item.id === id)
-  if (!customer) return '—'
-  return companyName(customer.company_id)
 }
 
 function flattenCustomers(groups) {
@@ -918,15 +897,6 @@ async function loadLookups() {
   }
 }
 
-async function loadDepartments() {
-  try {
-    const { data } = await api.get('/departments/', { params: { limit: 300 } })
-    departments.value = data || []
-  } catch (error) {
-    ElMessage.error(error?.response?.data?.detail || error?.message || '加载部门失败')
-  }
-}
-
 async function loadSales() {
   loading.value = true
   try {
@@ -938,11 +908,8 @@ async function loadSales() {
 
     // 处理客户类型过滤
     if (filters.customerType === 'personal') {
-      // 个人客户：获取所有个人客户（company_id=0）和陌生客户（customer_id=null）的销售记录
-      // 由于API不支持同时查询两种条件，我们需要获取所有记录然后在前端过滤
-      // 这里我们可以不传customer_id，让API返回所有记录，然后在前端过滤
-      // 或者我们可以添加一个特殊的参数来标识这是个人客户查询
-      // 暂时不传customer_id，让API返回所有记录
+      // 个人客户：获取所有个人客户（company_id=0）的销售记录
+      params.company_id = 0
     } else if (filters.customerType === 'company') {
       // 公司客户：根据公司和部门过滤
       if (filters.customerId) params.customer_id = filters.customerId
@@ -1098,7 +1065,6 @@ function handleCustomerTypeChange() {
 onMounted(async () => {
   auth.ensureInterceptors()
   await loadLookups()
-  await loadDepartments()
   await loadSales()
 })
 </script>

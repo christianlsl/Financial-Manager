@@ -23,7 +23,11 @@ class CompanyUpdate(BaseModel):
     email: Optional[EmailStr] = None
 
 
+from .department import DepartmentRead
+
+
 class CompanyRead(CompanyBase):
     id: int
+    departments: list[DepartmentRead] = []
     # Pydantic v2 style config
     model_config = ConfigDict(from_attributes=True)

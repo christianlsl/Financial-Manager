@@ -37,16 +37,19 @@ class SaleUpdate(BaseModel):
     image_url: Optional[str] = None
 
 
-
 from .department import DepartmentRead
+
 
 class SaleRead(SaleBase):
     id: int
     customer_department_id: int | None = None
     customer_department: DepartmentRead | None = None
+    company_name: str | None = None
+    department_name: str | None = None
+    customer_name: str | None = None
+    type_name: str | None = None
     # Pydantic v2 style config
     model_config = ConfigDict(from_attributes=True)
-
 
 
 class SaleList(BaseModel):

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..db import get_db
 from ..deps import get_current_user
@@ -26,7 +26,7 @@ def list_customer_companies(
     if q:
         like = f"%{q}%"
         query = query.filter(Company.name.ilike(like))
-    return query.offset(skip).limit(limit).all()
+    return query.options(joinedload(Company.departments)).offset(skip).limit(limit).all()
 
 
 @router.get("/count", response_model=int)

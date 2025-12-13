@@ -7,7 +7,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
@@ -244,19 +244,45 @@ def list_sales(
         query = query.filter(Sale.total_price <= normalized_amount_max)
 
     total = query.count()
+
+    # Add eager loading to avoid N+1 queries
+    query = query.options(
+        joinedload(Sale.customer).joinedload(Customer.company),
+        joinedload(Sale.customer).joinedload(Customer.department),
+        joinedload(Sale.type),
+    )
+
     items = query.order_by(Sale.date.desc(), Sale.id.desc()).offset(skip).limit(limit).all()
 
     # Enrich each sale with customer department info
     enriched = []
     from ..schemas.department import DepartmentRead
+
     for sale in items:
         customer = sale.customer
         dept = getattr(customer, "department", None) if customer else None
+        company = getattr(customer, "company", None) if customer else None
+        sale_type = getattr(sale, "type", None)
+
+        company_name = None
+        customer_name = "陌生客户"
+
+        if customer:
+            customer_name = customer.name
+            if customer.company_id == 0:
+                company_name = "个人客户"
+            elif company:
+                company_name = company.name
+
         enriched.append(
             SaleRead(
                 **sale.__dict__,
                 customer_department_id=getattr(customer, "department_id", None) if customer else None,
                 customer_department=DepartmentRead.model_validate(dept) if dept else None,
+                company_name=company_name,
+                department_name=dept.name if dept else None,
+                customer_name=customer_name,
+                type_name=sale_type.name if sale_type else None,
             )
         )
     return SaleList(items=enriched, total=total)
@@ -341,7 +367,9 @@ async def update_sale(
     remove_image_requested = (
         upload_file is None and "image_url" in update_payload and update_payload.get("image_url") is None
     )
-    previous_image_url: str | None = sale.image_url if (upload_file is not None or remove_image_requested) else None
+    previous_image_url: str | None = (
+        sale.image_url if (upload_file is not None or remove_image_requested) else None
+    )
     if upload_file is not None:
         if not upload_file.content_type or not upload_file.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="仅支持图片格式上传")
@@ -361,7 +389,9 @@ async def update_sale(
     db.commit()
     db.refresh(sale)
     # Best-effort cleanup: delete previous image if replaced or explicitly removed
-    if previous_image_url and ((new_image_url and previous_image_url != new_image_url) or remove_image_requested):
+    if previous_image_url and (
+        (new_image_url and previous_image_url != new_image_url) or remove_image_requested
+    ):
         try:
             uploader.delete(previous_image_url)
         except ImageUploadError as exc:  # pragma: no cover - best effort cleanup
@@ -374,19 +404,19 @@ def delete_sale(sale_id: int, db: Session = Depends(get_db), current_user: User 
     sale = db.query(Sale).filter(Sale.id == sale_id, Sale.owner_id == current_user.id).first()
     if not sale:
         raise HTTPException(status_code=404, detail="Sale not found")
-    
+
     # 记录图片URL以便在删除记录前删除图片
     image_url = sale.image_url
-    
+
     # 删除数据库记录
     db.delete(sale)
     db.commit()
-    
+
     # 最佳努力删除七牛云上的图片
     if image_url:
         try:
             uploader.delete(image_url)
         except ImageUploadError as exc:
             logger.warning("Failed to delete sale image %s: %s", image_url, exc)
-    
+
     return {"ok": True}
