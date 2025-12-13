@@ -22,7 +22,8 @@
                     </el-icon>
                   </template>
                 </el-input>
-                <el-select v-model="customerFilterCompanyId" placeholder="筛选公司" style="min-width: 200px">
+                <el-select v-model="customerFilterCompanyId" placeholder="筛选公司" style="min-width: 200px" filterable
+                  clearable>
                   <el-option :value="ALL_COMPANY_VALUE" label="全部客户" />
                   <el-option :value="PERSONAL_COMPANY_VALUE" label="个人客户" />
                   <el-option v-for="item in companies" :key="item.id" :value="item.id" :label="item.name" />
@@ -37,8 +38,7 @@
             </div>
             <div class="catalogs__table-grid">
               <el-table :data="filteredCustomers" border stripe v-loading="loadingCustomers"
-                @current-change="handleCustomerSelect" row-key="key"
-                :tree-props="{ children: 'children', hasChildren: 'hasChildren' }" default-expand-all>
+                @current-change="handleCustomerSelect">
                 <el-table-column prop="name" label="客户名称" min-width="200" />
                 <el-table-column prop="company_name" label="所属公司" min-width="180">
                   <template #default="{ row }">{{ row.company_name || '—' }}</template>
@@ -461,8 +461,32 @@ const pagination = reactive({
 })
 
 const filteredCustomers = computed(() => {
-  // 后端已处理筛选
-  return customers.value
+  let result = customers.value
+
+  // 应用公司筛选
+  const companyFilter = customerFilterCompanyId.value
+  if (companyFilter === ALL_COMPANY_VALUE) {
+    result = customers.value
+  } else if (companyFilter === PERSONAL_COMPANY_VALUE) {
+    result = customers.value.filter((item) => item.company_id === 0)
+  } else {
+    result = customers.value.filter((item) => item.company_id === companyFilter)
+  }
+
+  // 应用搜索关键词
+  const keyword = customerSearchKeyword.value.toLowerCase().trim()
+  if (keyword) {
+    result = result.filter((item) => {
+      return (
+        (item.name && item.name.toLowerCase().includes(keyword)) ||
+        (item.phone_number && item.phone_number.toLowerCase().includes(keyword)) ||
+        (item.email && item.email.toLowerCase().includes(keyword)) ||
+        (item.position && item.position.toLowerCase().includes(keyword))
+      )
+    })
+  }
+
+  return result
 })
 
 const companyDialog = reactive({
@@ -823,8 +847,24 @@ async function loadCustomers() {
     const { data: count } = await api.get('/customers/count', { params: countParams })
     pagination.customers.total = count
 
-    // 后端已返回树形结构，直接赋值
-    customers.value = data || []
+    // 处理数据格式化，保持与原代码相同的格式转换逻辑
+    const formattedData = (data || []).flatMap((group) => {
+      const resolvedGroupCompanyId = typeof group.company_id === 'number' ? group.company_id : PERSONAL_COMPANY_VALUE
+      return (group.customers || []).map((customer) => {
+        const customerCompanyId = typeof customer.company_id === 'number' ? customer.company_id : resolvedGroupCompanyId
+        return {
+          ...customer,
+          company_id: customerCompanyId
+        }
+      })
+    })
+
+    customers.value = formattedData.sort((a, b) => {
+      const companyA = a.company_id ?? -1
+      const companyB = b.company_id ?? -1
+      if (companyA !== companyB) return companyA - companyB
+      return a.id - b.id
+    })
   } catch (error) {
     const message = error?.response?.data?.detail || error?.message || '加载客户列表失败'
     ElMessage.error(message)
@@ -832,6 +872,7 @@ async function loadCustomers() {
     loadingCustomers.value = false
   }
 }
+
 
 async function loadSuppliers() {
   loadingSuppliers.value = true
