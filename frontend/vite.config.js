@@ -19,7 +19,10 @@ export default defineConfig({
                 changeOrigin: true,
                 secure: false
             }
-        }
+        },
+        watch: {
+            ignored: ['**/node_modules/**', '**/dist/**'],
+        },
     },
     build: {
         assetsDir: 'assets', // 确保资源文件放在 assets 目录

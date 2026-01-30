@@ -10,7 +10,12 @@ from ..models.sale import Sale
 from ..models.department import Department
 from ..models.user import User
 
-from ..schemas.customer import CustomerCreate, CustomerGroup, CustomerRead, CustomerUpdate
+from ..schemas.customer import (
+    CustomerCreate,
+    CustomerGroup,
+    CustomerRead,
+    CustomerUpdate,
+)
 from ..models.user_company import user_company_table
 
 router = APIRouter()
@@ -20,11 +25,16 @@ def _customer_access_filter(current_user: User):
     return Customer.vendors.any(User.id == current_user.id)
 
 
-def _get_accessible_department(db: Session, current_user: User, department_id: int) -> Department | None:
+def _get_accessible_department(
+    db: Session, current_user: User, department_id: int
+) -> Department | None:
     return (
         db.query(Department)
         .join(Company)
-        .filter(Department.id == department_id, Company.vendors.any(User.id == current_user.id))
+        .filter(
+            Department.id == department_id,
+            Company.vendors.any(User.id == current_user.id),
+        )
         .first()
     )
 
@@ -60,7 +70,12 @@ def list_customers(
             )
         )
     order_expr = case((Customer.company_id == 0, 0), else_=1)
-    customers = query.order_by(order_expr, Customer.company_id, Customer.id).offset(skip).limit(limit).all()
+    customers = (
+        query.order_by(order_expr, Customer.company_id, Customer.id)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     groups: dict[int, list[Customer]] = {}
     order: list[int] = []
     for item in customers:
@@ -72,7 +87,9 @@ def list_customers(
     return [
         CustomerGroup(
             company_id=company_key,
-            customers=[CustomerRead.model_validate(entry) for entry in groups[company_key]],
+            customers=[
+                CustomerRead.model_validate(entry) for entry in groups[company_key]
+            ],
         )
         for company_key in order
     ]
@@ -115,10 +132,15 @@ def create_customer(
     company_id = payload.get("company_id", 0)
     if company_id < 0:
         raise HTTPException(status_code=400, detail="Invalid company id")
+    if company_id == 0:
+        payload["department_id"] = None
     if company_id != 0:
         company = (
             db.query(Company)
-            .filter(Company.id == company_id, Company.vendors.any(User.id == current_user.id))
+            .filter(
+                Company.id == company_id,
+                Company.vendors.any(User.id == current_user.id),
+            )
             .first()
         )
         if not company:
@@ -158,7 +180,9 @@ def get_customer(
     current_user: User = Depends(get_current_user),
 ):
     access_filter = _customer_access_filter(current_user)
-    customer = db.query(Customer).filter(Customer.id == customer_id, access_filter).first()
+    customer = (
+        db.query(Customer).filter(Customer.id == customer_id, access_filter).first()
+    )
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
     if customer.company_id > 0:
@@ -183,7 +207,9 @@ def update_customer(
     current_user: User = Depends(get_current_user),
 ):
     access_filter = _customer_access_filter(current_user)
-    customer = db.query(Customer).filter(Customer.id == customer_id, access_filter).first()
+    customer = (
+        db.query(Customer).filter(Customer.id == customer_id, access_filter).first()
+    )
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
@@ -196,12 +222,16 @@ def update_customer(
             raise HTTPException(status_code=400, detail="Invalid company id")
         if new_company_id == 0:
             payload["company_id"] = 0
+            payload["department_id"] = None
             if current_user not in customer.vendors:
                 customer.vendors.append(current_user)
         else:
             company = (
                 db.query(Company)
-                .filter(Company.id == new_company_id, Company.vendors.any(User.id == current_user.id))
+                .filter(
+                    Company.id == new_company_id,
+                    Company.vendors.any(User.id == current_user.id),
+                )
                 .first()
             )
             if not company:
@@ -210,7 +240,9 @@ def update_customer(
     if "department_id" in payload:
         new_department_id = payload["department_id"]
         if new_department_id is not None:
-            department_obj = _get_accessible_department(db, current_user, new_department_id)
+            department_obj = _get_accessible_department(
+                db, current_user, new_department_id
+            )
             if not department_obj:
                 raise HTTPException(status_code=404, detail="Department not found")
 
@@ -230,7 +262,9 @@ def delete_customer(
     current_user: User = Depends(get_current_user),
 ):
     access_filter = _customer_access_filter(current_user)
-    customer = db.query(Customer).filter(Customer.id == customer_id, access_filter).first()
+    customer = (
+        db.query(Customer).filter(Customer.id == customer_id, access_filter).first()
+    )
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 

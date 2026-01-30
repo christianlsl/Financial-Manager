@@ -15,10 +15,17 @@ from ..db import get_db
 from ..deps import get_current_user
 from ..models.company import Company
 from ..models.customer import Customer
+from ..models.department import Department
 from ..models.sale import Sale, SaleStatusEnum
 from ..models.type import Type
 from ..models.user import User
-from ..schemas.sale import SaleCreate, SaleImageUploadResponse, SaleList, SaleRead, SaleUpdate
+from ..schemas.sale import (
+    SaleCreate,
+    SaleImageUploadResponse,
+    SaleList,
+    SaleRead,
+    SaleUpdate,
+)
 from ..services.image_uploader import ImageUploadError, uploader
 
 logger = logging.getLogger(__name__)
@@ -50,14 +57,18 @@ def _apply_price_validation(payload: dict, current_sale: Sale | None = None) -> 
         unit_price = payload.get("unit_price")
         total_price = payload.get("total_price")
     else:
-        if not any(field in payload for field in ("items_count", "unit_price", "total_price")):
+        if not any(
+            field in payload for field in ("items_count", "unit_price", "total_price")
+        ):
             return payload
         count = payload.get("items_count", current_sale.items_count)
         unit_price = payload.get("unit_price", current_sale.unit_price)
         total_price = payload.get("total_price")
 
     if count is None or unit_price is None:
-        raise HTTPException(status_code=400, detail="items_count and unit_price are required")
+        raise HTTPException(
+            status_code=400, detail="items_count and unit_price are required"
+        )
 
     normalized_unit_price = _to_decimal(unit_price)
     normalized_count = int(count)
@@ -65,7 +76,10 @@ def _apply_price_validation(payload: dict, current_sale: Sale | None = None) -> 
     if total_price is not None:
         provided_total = _to_decimal(total_price)
         if provided_total != expected_total:
-            raise HTTPException(status_code=400, detail="total_price must equal items_count * unit_price")
+            raise HTTPException(
+                status_code=400,
+                detail="total_price must equal items_count * unit_price",
+            )
     payload["items_count"] = normalized_count
     payload["unit_price"] = normalized_unit_price
     payload["total_price"] = expected_total
@@ -76,13 +90,19 @@ def _customer_access_filter(current_user: User):
     return Customer.vendors.any(User.id == current_user.id)
 
 
-def _get_accessible_customer(db: Session, current_user: User, customer_id: int) -> Customer | None:
+def _get_accessible_customer(
+    db: Session, current_user: User, customer_id: int
+) -> Customer | None:
     return (
-        db.query(Customer).filter(Customer.id == customer_id, _customer_access_filter(current_user)).first()
+        db.query(Customer)
+        .filter(Customer.id == customer_id, _customer_access_filter(current_user))
+        .first()
     )
 
 
-async def _parse_sale_update_request(request: Request) -> tuple[dict[str, Any], UploadFile | None]:
+async def _parse_sale_update_request(
+    request: Request,
+) -> tuple[dict[str, Any], UploadFile | None]:
     content_type = request.headers.get("content-type", "").lower()
     if "multipart/form-data" in content_type:
         form_data = await request.form()
@@ -94,7 +114,9 @@ async def _parse_sale_update_request(request: Request) -> tuple[dict[str, Any], 
                 image_file = candidate
                 break
         for key, value in form_data.multi_items():
-            if key in {"image_file", "file", "image"} and isinstance(value, StarletteUploadFile):
+            if key in {"image_file", "file", "image"} and isinstance(
+                value, StarletteUploadFile
+            ):
                 continue
             if key == "data" and isinstance(value, str):
                 stripped = value.strip()
@@ -102,8 +124,12 @@ async def _parse_sale_update_request(request: Request) -> tuple[dict[str, Any], 
                     continue
                 try:
                     decoded = json.loads(stripped)
-                except json.JSONDecodeError as exc:  # pragma: no cover - invalid payload
-                    raise HTTPException(status_code=400, detail="Invalid data payload") from exc
+                except (
+                    json.JSONDecodeError
+                ) as exc:  # pragma: no cover - invalid payload
+                    raise HTTPException(
+                        status_code=400, detail="Invalid data payload"
+                    ) from exc
                 if not isinstance(decoded, dict):
                     raise HTTPException(status_code=400, detail="Invalid data payload")
                 payload.update(decoded)
@@ -142,7 +168,9 @@ def _normalize_update_payload_types(payload: dict[str, Any]) -> dict[str, Any]:
         try:
             normalized["date"] = date.fromisoformat(d.strip())
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD") from exc
+            raise HTTPException(
+                status_code=400, detail="Invalid date format, expected YYYY-MM-DD"
+            ) from exc
     # Normalize integer-like fields
     for k in ("items_count", "customer_id", "type_id"):
         v = normalized.get(k)
@@ -150,7 +178,9 @@ def _normalize_update_payload_types(payload: dict[str, Any]) -> dict[str, Any]:
             try:
                 normalized[k] = int(v)
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail=f"Invalid integer value for {k}") from exc
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid integer value for {k}"
+                ) from exc
     # Normalize decimals as strings (Decimal parsing happens in _apply_price_validation)
     for k in ("unit_price", "total_price"):
         v = normalized.get(k)
@@ -177,6 +207,7 @@ def list_sales(
     type_id: int | None = None,
     customer_id: int | None = None,
     company_id: int | None = None,
+    department_id: int | None = None,
     status: str | None = None,
     search: str | None = None,
     date_from: date | None = None,
@@ -205,7 +236,11 @@ def list_sales(
 
     if status:
         normalized_status = status.strip().lower()
-        if normalized_status not in {SaleStatusEnum.DRAFT, SaleStatusEnum.SENT, SaleStatusEnum.PAID}:
+        if normalized_status not in {
+            SaleStatusEnum.DRAFT,
+            SaleStatusEnum.SENT,
+            SaleStatusEnum.PAID,
+        }:
             raise HTTPException(status_code=400, detail="Invalid status filter")
         query = query.filter(Sale.status == normalized_status)
     if type_id is not None:
@@ -215,6 +250,21 @@ def list_sales(
     if company_id is not None:
         ensure_customer_join()
         query = query.filter(Customer.company_id == company_id)
+        if department_id is not None:
+            dept = (
+                db.query(Department.id)
+                .filter(
+                    Department.id == department_id, Department.company_id == company_id
+                )
+                .first()
+            )
+            if not dept:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Department does not belong to the specified company",
+                )
+            ensure_customer_join()
+            query = query.filter(Customer.department_id == department_id)
     if search and search.strip():
         ensure_company_join()
         keyword = f"%{search.strip().lower()}%"
@@ -237,7 +287,9 @@ def list_sales(
         and normalized_amount_max is not None
         and normalized_amount_min > normalized_amount_max
     ):
-        raise HTTPException(status_code=400, detail="amount_min cannot be greater than amount_max")
+        raise HTTPException(
+            status_code=400, detail="amount_min cannot be greater than amount_max"
+        )
     if normalized_amount_min is not None:
         query = query.filter(Sale.total_price >= normalized_amount_min)
     if normalized_amount_max is not None:
@@ -252,7 +304,9 @@ def list_sales(
         joinedload(Sale.type),
     )
 
-    items = query.order_by(Sale.date.desc(), Sale.id.desc()).offset(skip).limit(limit).all()
+    items = (
+        query.order_by(Sale.date.desc(), Sale.id.desc()).offset(skip).limit(limit).all()
+    )
 
     # Enrich each sale with customer department info
     enriched = []
@@ -277,8 +331,12 @@ def list_sales(
         enriched.append(
             SaleRead(
                 **sale.__dict__,
-                customer_department_id=getattr(customer, "department_id", None) if customer else None,
-                customer_department=DepartmentRead.model_validate(dept) if dept else None,
+                customer_department_id=(
+                    getattr(customer, "department_id", None) if customer else None
+                ),
+                customer_department=(
+                    DepartmentRead.model_validate(dept) if dept else None
+                ),
                 company_name=company_name,
                 department_name=dept.name if dept else None,
                 customer_name=customer_name,
@@ -290,10 +348,16 @@ def list_sales(
 
 @router.post("/", response_model=SaleRead)
 def create_sale(
-    data: SaleCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+    data: SaleCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if data.type_id is not None:
-        type_obj = db.query(Type).filter(Type.id == data.type_id, Type.owner_id == current_user.id).first()
+        type_obj = (
+            db.query(Type)
+            .filter(Type.id == data.type_id, Type.owner_id == current_user.id)
+            .first()
+        )
         if not type_obj:
             raise HTTPException(status_code=404, detail="Type not found")
     payload = _apply_price_validation(data.model_dump())
@@ -325,8 +389,16 @@ async def upload_sale_image(
 
 
 @router.get("/{sale_id}", response_model=SaleRead)
-def get_sale(sale_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    sale = db.query(Sale).filter(Sale.id == sale_id, Sale.owner_id == current_user.id).first()
+def get_sale(
+    sale_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sale = (
+        db.query(Sale)
+        .filter(Sale.id == sale_id, Sale.owner_id == current_user.id)
+        .first()
+    )
     if not sale:
         raise HTTPException(status_code=404, detail="Sale not found")
     return sale
@@ -339,7 +411,11 @@ async def update_sale(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    sale = db.query(Sale).filter(Sale.id == sale_id, Sale.owner_id == current_user.id).first()
+    sale = (
+        db.query(Sale)
+        .filter(Sale.id == sale_id, Sale.owner_id == current_user.id)
+        .first()
+    )
     if not sale:
         raise HTTPException(status_code=404, detail="Sale not found")
     payload_data, upload_file = await _parse_sale_update_request(request)
@@ -353,7 +429,11 @@ async def update_sale(
     if "type_id" in update_payload:
         new_type_id = update_payload["type_id"]
         if new_type_id is not None:
-            type_obj = db.query(Type).filter(Type.id == new_type_id, Type.owner_id == current_user.id).first()
+            type_obj = (
+                db.query(Type)
+                .filter(Type.id == new_type_id, Type.owner_id == current_user.id)
+                .first()
+            )
             if not type_obj:
                 raise HTTPException(status_code=404, detail="Type not found")
     if "customer_id" in update_payload:
@@ -365,13 +445,17 @@ async def update_sale(
     new_image_url: str | None = None
     # If client explicitly clears image_url (and no new upload), we should delete the previous image
     remove_image_requested = (
-        upload_file is None and "image_url" in update_payload and update_payload.get("image_url") is None
+        upload_file is None
+        and "image_url" in update_payload
+        and update_payload.get("image_url") is None
     )
     previous_image_url: str | None = (
         sale.image_url if (upload_file is not None or remove_image_requested) else None
     )
     if upload_file is not None:
-        if not upload_file.content_type or not upload_file.content_type.startswith("image/"):
+        if not upload_file.content_type or not upload_file.content_type.startswith(
+            "image/"
+        ):
             raise HTTPException(status_code=400, detail="仅支持图片格式上传")
         file_bytes = await upload_file.read()
         if not file_bytes:
@@ -390,18 +474,29 @@ async def update_sale(
     db.refresh(sale)
     # Best-effort cleanup: delete previous image if replaced or explicitly removed
     if previous_image_url and (
-        (new_image_url and previous_image_url != new_image_url) or remove_image_requested
+        (new_image_url and previous_image_url != new_image_url)
+        or remove_image_requested
     ):
         try:
             uploader.delete(previous_image_url)
         except ImageUploadError as exc:  # pragma: no cover - best effort cleanup
-            logger.warning("Failed to delete old sale image %s: %s", previous_image_url, exc)
+            logger.warning(
+                "Failed to delete old sale image %s: %s", previous_image_url, exc
+            )
     return sale
 
 
 @router.delete("/{sale_id}")
-def delete_sale(sale_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    sale = db.query(Sale).filter(Sale.id == sale_id, Sale.owner_id == current_user.id).first()
+def delete_sale(
+    sale_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sale = (
+        db.query(Sale)
+        .filter(Sale.id == sale_id, Sale.owner_id == current_user.id)
+        .first()
+    )
     if not sale:
         raise HTTPException(status_code=404, detail="Sale not found")
 

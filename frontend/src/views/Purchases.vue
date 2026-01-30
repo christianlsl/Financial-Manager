@@ -101,22 +101,22 @@
         </template>
         <el-empty v-if="!purchases.length && !loading" description="暂无采购记录" />
         <div v-else class="purchases__table-grid">
-          <el-table :data="purchases" border stripe>
-            <el-table-column prop="date" label="日期" width="120" />
-            <el-table-column label="项目">
+          <el-table :data="purchases" border stripe row-class-name="fixed-height-row">
+            <el-table-column prop="date" label="日期" width="120" show-overflow-tooltip />
+            <el-table-column label="项目" show-overflow-tooltip>
               <template #default="{ row }">{{ row.item_name || '未填写' }}</template>
             </el-table-column>
-            <el-table-column label="供应商" width="180">
+            <el-table-column label="供应商" width="180" show-overflow-tooltip>
               <template #default="{ row }">{{ row.supplier_name || '—' }}</template>
             </el-table-column>
-            <el-table-column label="类型" width="140">
+            <el-table-column label="类型" width="140" show-overflow-tooltip>
               <template #default="{ row }">{{ row.type_name || '—' }}</template>
             </el-table-column>
-            <el-table-column label="数量" width="90" prop="items_count" />
-            <el-table-column label="单价" width="110">
+            <el-table-column label="数量" width="90" prop="items_count" show-overflow-tooltip />
+            <el-table-column label="单价" width="110" show-overflow-tooltip>
               <template #default="{ row }">¥ {{ formatAmount(row.unit_price) }}</template>
             </el-table-column>
-            <el-table-column label="金额" width="110">
+            <el-table-column label="金额" width="110" show-overflow-tooltip>
               <template #default="{ row }">¥ {{ formatAmount(row.total_price) }}</template>
             </el-table-column>
             <el-table-column label="图片" width="160">
@@ -152,7 +152,7 @@
                 </el-popover>
               </template>
             </el-table-column>
-            <el-table-column label="备注">
+            <el-table-column label="备注" show-overflow-tooltip>
               <template #default="{ row }">{{ row.notes || '—' }}</template>
             </el-table-column>
             <el-table-column label="操作" width="160" fixed="right">
@@ -879,5 +879,52 @@ function supplierLabel(supplier) {
   width: 100%;
   min-width: 0;
   overflow: auto;
+}
+
+/* 固定表格行高 */
+.purchases :deep(.fixed-height-row) {
+  height: 60px;
+}
+
+.purchases :deep(.el-table__body-wrapper .el-table__row) {
+  height: 60px;
+}
+
+.purchases :deep(.el-table__cell) {
+  padding: 8px 0;
+  line-height: 1.5;
+}
+
+.purchases :deep(.el-table__cell .cell) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.purchases__image-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.purchases__image-thumb,
+.purchases__image-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  background: #f2f3f5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #909399;
+}
+
+.purchases__image-upload {
+  margin: 0;
+}
+
+.purchases__uploader :deep(.el-upload--picture-card) {
+  border-radius: 8px;
 }
 </style>

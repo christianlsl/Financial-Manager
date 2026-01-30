@@ -218,6 +218,8 @@ The frontend is configured to use relative paths (e.g., `/api/users`) for API ca
        }
    
        # 反向代理后端API（解决跨域）
+       # 说明：前端访问 /api/* 会被转发到后端 http://127.0.0.1:9910/*
+       # proxy_pass 末尾的 / 会去掉 /api 前缀，后端实际路由不包含 /api
        location /api/ {
            proxy_pass http://127.0.0.1:9910/;
            proxy_set_header Host $host;

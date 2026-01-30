@@ -133,30 +133,30 @@
         </template>
         <el-empty v-if="!sales.length && !loading" description="暂无销售记录" />
         <div v-else class="sales__table-grid">
-          <el-table :data="sales" border stripe>
-            <el-table-column prop="date" label="日期" width="100" />
-            <el-table-column label="项目" min-width="180">
+          <el-table :data="sales" border stripe row-class-name="fixed-height-row">
+            <el-table-column prop="date" label="日期" width="100" show-overflow-tooltip />
+            <el-table-column label="项目" min-width="180" show-overflow-tooltip>
               <template #default="{ row }">{{ row.item_name || '未填写' }}</template>
             </el-table-column>
-            <el-table-column label="公司" width="130">
+            <el-table-column label="公司" width="130" show-overflow-tooltip>
               <template #default="{ row }">{{ row.company_name || '—' }}</template>
             </el-table-column>
-            <el-table-column label="部门" width="80">
+            <el-table-column label="部门" width="80" show-overflow-tooltip>
               <template #default="{ row }">
                 {{ row.department_name || '—' }}
               </template>
             </el-table-column>
-            <el-table-column label="客户" width="100">
+            <el-table-column label="客户" width="100" show-overflow-tooltip>
               <template #default="{ row }">{{ row.customer_name || '—' }}</template>
             </el-table-column>
-            <el-table-column label="类型" width="100">
+            <el-table-column label="类型" width="100" show-overflow-tooltip>
               <template #default="{ row }">{{ row.type_name || '—' }}</template>
             </el-table-column>
-            <el-table-column label="数量" width="50" prop="items_count" />
-            <el-table-column label="单价" width="100">
+            <el-table-column label="数量" width="50" prop="items_count" show-overflow-tooltip />
+            <el-table-column label="单价" width="100" show-overflow-tooltip>
               <template #default="{ row }">¥ {{ formatAmount(row.unit_price) }}</template>
             </el-table-column>
-            <el-table-column label="金额" width="110">
+            <el-table-column label="金额" width="110" show-overflow-tooltip>
               <template #default="{ row }">¥ {{ formatAmount(row.total_price) }}</template>
             </el-table-column>
             <el-table-column label="图片" width="160">
@@ -194,7 +194,7 @@
                 </el-popover>
               </template>
             </el-table-column>
-            <el-table-column label="备注">
+            <el-table-column label="备注" show-overflow-tooltip>
               <template #default="{ row }">{{ row.notes || '—' }}</template>
             </el-table-column>
             <el-table-column label="操作" width="120" fixed="right">
@@ -582,10 +582,8 @@ watch(
 watch(
   () => filters.companyId,
   (companyId) => {
-    if (companyId) {
-      filters.departmentId = null
-      filters.customerId = null
-    }
+    filters.departmentId = null
+    filters.customerId = null
   }
 )
 watch(
@@ -984,6 +982,7 @@ async function loadSales() {
       // 公司客户：根据公司和部门过滤
       if (filters.customerId) params.customer_id = filters.customerId
       if (filters.companyId) params.company_id = filters.companyId
+      if (filters.departmentId) params.department_id = filters.departmentId
     }
 
     if (filters.typeId) params.type_id = filters.typeId
@@ -1238,6 +1237,26 @@ onMounted(async () => {
   /* grid-template-columns: 1fr;
   min-width: 0; */
   /* overflow: auto; */
+}
+
+/* 固定表格行高 */
+.sales :deep(.fixed-height-row) {
+  height: 60px;
+}
+
+.sales :deep(.el-table__body-wrapper .el-table__row) {
+  height: 60px;
+}
+
+.sales :deep(.el-table__cell) {
+  padding: 8px 0;
+  line-height: 1.5;
+}
+
+.sales :deep(.el-table__cell .cell) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sales__image-cell {
