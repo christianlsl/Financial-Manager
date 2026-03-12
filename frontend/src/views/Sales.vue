@@ -133,7 +133,7 @@
         </template>
         <el-empty v-if="!sales.length && !loading" description="暂无销售记录" />
         <div v-else class="sales__table-grid">
-          <el-table :data="sales" border stripe row-class-name="fixed-height-row">
+          <el-table :data="sales" border stripe row-class-name="fixed-height-row" @sort-change="handleSortChange">
             <el-table-column prop="date" label="日期" width="100" show-overflow-tooltip sortable />
             <el-table-column label="项目" min-width="180" show-overflow-tooltip>
               <template #default="{ row }">{{ row.item_name || '未填写' }}</template>
@@ -338,9 +338,20 @@ async function downloadXlsx() {
     { header: '备注', key: 'notes', width: 30, style: commonStyle }
   ]
 
+  // Apply current table sort order before export
+  const sortedSales = [...sales.value]
+  if (sortState.prop && sortState.order) {
+    sortedSales.sort((a, b) => {
+      const valA = a[sortState.prop] ?? ''
+      const valB = b[sortState.prop] ?? ''
+      const cmp = valA < valB ? -1 : valA > valB ? 1 : 0
+      return sortState.order === 'ascending' ? cmp : -cmp
+    })
+  }
+
   // Process rows sequentially to handle async image fetching
-  for (let i = 0; i < sales.value.length; i++) {
-    const row = sales.value[i]
+  for (let i = 0; i < sortedSales.length; i++) {
+    const row = sortedSales[i]
     const rowIndex = i + 2 // 1-based, +1 for header
 
     const rowData = {
@@ -468,6 +479,12 @@ const filters = reactive({
 })
 const pagination = reactive({ page: 1, pageSize: 10, total: 0 })
 const rowImageUploading = reactive({})
+const sortState = reactive({ prop: null, order: null })
+
+function handleSortChange({ prop, order }) {
+  sortState.prop = prop
+  sortState.order = order
+}
 
 const rules = {
   date: [{ required: true, message: '请选择销售日期', trigger: 'change' }],
