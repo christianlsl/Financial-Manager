@@ -193,6 +193,7 @@ The frontend is configured to use relative paths (e.g., `/api/users`) for API ca
    ```bash
    scp -r ./dist/* root@47.100.89.197:/usr/share/nginx/html
 
+   # login remote server
    sudo chmod -R 755 /usr/share/nginx/html
    ```
 

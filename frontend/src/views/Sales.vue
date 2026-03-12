@@ -13,7 +13,7 @@
             </el-icon>
             刷新
           </el-button>
-          <el-button @click="downloadCsv" plain>
+          <el-button @click="downloadXlsx" plain>
             <el-icon>
               <Download />
             </el-icon>
@@ -134,7 +134,7 @@
         <el-empty v-if="!sales.length && !loading" description="暂无销售记录" />
         <div v-else class="sales__table-grid">
           <el-table :data="sales" border stripe row-class-name="fixed-height-row">
-            <el-table-column prop="date" label="日期" width="100" show-overflow-tooltip />
+            <el-table-column prop="date" label="日期" width="100" show-overflow-tooltip sortable />
             <el-table-column label="项目" min-width="180" show-overflow-tooltip>
               <template #default="{ row }">{{ row.item_name || '未填写' }}</template>
             </el-table-column>
@@ -310,7 +310,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Search, Download } from '@element-plus/icons-vue'
 import ExcelJS from 'exceljs'
 // CSV导出相关
-async function downloadCsv() {
+async function downloadXlsx() {
   if (!sales.value.length) {
     ElMessage.warning('暂无数据可导出')
     return
@@ -319,19 +319,23 @@ async function downloadCsv() {
   const workbook = new ExcelJS.Workbook()
   const worksheet = workbook.addWorksheet('销售表')
 
+  const commonStyle = {
+    alignment: { vertical: 'middle', horizontal: 'center', wrapText: true }
+  }
+
   worksheet.columns = [
-    { header: '日期', key: 'date', width: 15 },
-    { header: '项目', key: 'item_name', width: 20 },
-    { header: '公司', key: 'company_name', width: 20 },
-    { header: '部门', key: 'department_name', width: 15 },
-    { header: '客户', key: 'customer_name', width: 15 },
-    { header: '类型', key: 'type_name', width: 15 },
-    { header: '数量', key: 'items_count', width: 10 },
-    { header: '单价', key: 'unit_price', width: 15 },
-    { header: '金额', key: 'total_price', width: 15 },
-    { header: '图片', key: 'image', width: 20 },
-    { header: '状态', key: 'status', width: 15 },
-    { header: '备注', key: 'notes', width: 30 }
+    { header: '日期', key: 'date', width: 15, style: commonStyle },
+    { header: '项目', key: 'item_name', width: 30, style: commonStyle },
+    { header: '公司', key: 'company_name', width: 20, style: commonStyle },
+    { header: '部门', key: 'department_name', width: 15, style: commonStyle },
+    { header: '客户', key: 'customer_name', width: 15, style: commonStyle },
+    { header: '类型', key: 'type_name', width: 15, style: commonStyle },
+    { header: '数量', key: 'items_count', width: 10, style: commonStyle },
+    { header: '单价', key: 'unit_price', width: 15, style: commonStyle },
+    { header: '金额', key: 'total_price', width: 15, style: commonStyle },
+    { header: '图片', key: 'image', width: 28, style: commonStyle }, // 28个字符宽度约等于200像素
+    { header: '状态', key: 'status', width: 15, style: commonStyle },
+    { header: '备注', key: 'notes', width: 30, style: commonStyle }
   ]
 
   // Process rows sequentially to handle async image fetching
@@ -354,6 +358,7 @@ async function downloadCsv() {
     }
 
     const addedRow = worksheet.addRow(rowData)
+    addedRow.height = 80 // 固定行高
 
     if (row.image_url) {
       try {
@@ -380,14 +385,14 @@ async function downloadCsv() {
             img.onerror = resolve
           })
           if (img.width && img.height) {
-            const maxDimension = 100
-            if (img.width > img.height) {
-              imgWidth = maxDimension
-              imgHeight = (img.height / img.width) * maxDimension
-            } else {
-              imgHeight = maxDimension
-              imgWidth = (img.width / img.height) * maxDimension
-            }
+            const maxWidth = 200
+            const maxHeight = 100
+            const widthRatio = maxWidth / img.width
+            const heightRatio = maxHeight / img.height
+            const ratio = Math.min(widthRatio, heightRatio)
+
+            imgWidth = img.width * ratio
+            imgHeight = img.height * ratio
           }
           URL.revokeObjectURL(url)
         } catch (err) {
@@ -403,9 +408,6 @@ async function downloadCsv() {
           tl: { col: 9, row: rowIndex - 1 },
           ext: { width: imgWidth, height: imgHeight }
         })
-
-        // Set row height to accommodate image
-        addedRow.height = 80
       } catch (e) {
         console.error('Failed to fetch image for excel', e)
         addedRow.getCell('image').value = '图片加载失败'

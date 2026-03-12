@@ -102,7 +102,7 @@
         <el-empty v-if="!purchases.length && !loading" description="暂无采购记录" />
         <div v-else class="purchases__table-grid">
           <el-table :data="purchases" border stripe row-class-name="fixed-height-row">
-            <el-table-column prop="date" label="日期" width="120" show-overflow-tooltip />
+            <el-table-column prop="date" label="日期" width="120" show-overflow-tooltip sortable />
             <el-table-column label="项目" show-overflow-tooltip>
               <template #default="{ row }">{{ row.item_name || '未填写' }}</template>
             </el-table-column>
