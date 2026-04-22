@@ -15,8 +15,8 @@ backend:
   # Security and token settings
   secret_key: change-this-in-production-super-secret-key
   jwt_algorithm: HS256
-  access_token_expire_minutes: 60
-  refresh_threshold_minutes: 10
+  access_token_expire_minutes: 8640
+  refresh_threshold_minutes: 60
 
 uploads:
   max_size_kb: 500
@@ -29,4 +29,4 @@ uploads:
 
 database:
   # Default SQLite DB path (relative to repo root: backend/financial_manager.db)
-  sqlite_db_path: backend/financial_manager.db
+  sqlite_db_path: financial_manager.db

@@ -21,3 +21,4 @@ htmlcov/
 
 config.yaml
 .vscode/
+.DS_Store

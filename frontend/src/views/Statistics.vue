@@ -9,13 +9,14 @@
                     <el-radio-group v-model="analysisType" @change="handleAnalysisTypeChange">
                         <el-radio-button value="yearly">年度分析</el-radio-button>
                         <el-radio-button value="monthly">月度分析</el-radio-button>
+                        <el-radio-button value="daily">日度分析</el-radio-button>
                     </el-radio-group>
                 </div>
                 <div>
-                    <el-date-picker v-model="dateRange" :type="analysisType === 'monthly' ? 'daterange' : 'monthrange'"
+                    <el-date-picker v-model="dateRange" :type="analysisType === 'daily' ? 'daterange' : 'monthrange'"
                         unlink-panels range-separator="至"
-                        :start-placeholder="analysisType === 'monthly' ? '开始日期' : '开始月份'"
-                        :end-placeholder="analysisType === 'monthly' ? '结束日期' : '结束月份'" @change="fetchStatistics" />
+                        :start-placeholder="analysisType === 'daily' ? '开始日期' : '开始月份'"
+                        :end-placeholder="analysisType === 'daily' ? '结束日期' : '结束月份'" @change="fetchStatistics" />
                 </div>
             </el-space>
 
@@ -110,7 +111,7 @@
                     <el-col :span="24">
                         <el-card class="chart-card">
                             <template #header>
-                                <span>{{ analysisType === 'monthly' ? '月度' : '年度' }}客户销售分析</span>
+                                <span>{{ getAnalysisLabel(analysisType) }}客户销售分析</span>
                             </template>
                             <div class="customer-charts-container">
                                 <div ref="customerChart" class="chart half-chart"></div>
@@ -128,7 +129,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
 import { ShoppingCart, TrendCharts, Money, PieChart } from '@element-plus/icons-vue'
@@ -138,7 +139,7 @@ import AppShell from '../components/AppShell.vue'
 // 响应式数据
 const auth = useAuthStore()
 const loading = ref(false)
-const analysisType = ref('yearly') // yearly: 年度分析, monthly: 月度分析
+const analysisType = ref('monthly') // yearly: 年度分析, monthly: 月度分析, daily: 日度分析
 const dateRange = ref([])
 const overview = ref({
     purchaseTotal: 0,
@@ -169,6 +170,71 @@ const formatPercent = (num) => {
     return `${(num * 100).toFixed(2)}%`
 }
 
+const getAnalysisLabel = (type) => {
+    if (type === 'yearly') return '年度'
+    if (type === 'daily') return '日度'
+    return '月度'
+}
+
+const getDefaultDateRange = (type) => {
+    const end = new Date()
+    const start = new Date()
+
+    if (type === 'daily') {
+        // 日度分析：最近30天
+        start.setDate(start.getDate() - 30)
+    } else if (type === 'yearly') {
+        // 年度分析：最近5年
+        start.setFullYear(start.getFullYear() - 5)
+    } else {
+        // 月度分析：最近12个月
+        start.setMonth(start.getMonth() - 12)
+    }
+
+    return [start, end]
+}
+
+const getAxisConfig = (type) => {
+    if (type === 'daily') {
+        return {
+            xAxisLabel: '日期',
+            rotate: 45,
+            formatter: (value) => value.split('-').slice(1).join('-')
+        }
+    }
+
+    if (type === 'yearly') {
+        return {
+            xAxisLabel: '年份',
+            rotate: 0,
+            formatter: (value) => value
+        }
+    }
+
+    return {
+        xAxisLabel: '月份',
+        rotate: 45,
+        formatter: (value) => {
+            if (value.length === 7) {
+                return value.split('-')[1]
+            }
+            return value
+        }
+    }
+}
+
+const getTrendTitle = (type) => {
+    if (type === 'daily') return '每日采购销售利润趋势'
+    if (type === 'yearly') return '年度采购销售利润趋势'
+    return '月度采购销售利润趋势'
+}
+
+const getComparisonTitle = (type) => {
+    if (type === 'daily') return '近期采购销售对比'
+    if (type === 'yearly') return '年度采购销售对比'
+    return '月度采购销售对比'
+}
+
 // 渲染客户销售额折线图
 const renderCustomerChart = (data) => {
     if (!customerChart.value) return
@@ -177,9 +243,8 @@ const renderCustomerChart = (data) => {
         customerChartInstance = echarts.init(customerChart.value)
     }
 
-    const isMonthly = data.analysisType === 'monthly'
-    const title = isMonthly ? '月度客户销售额分析' : '年度客户销售额分析'
-    const xAxisLabel = isMonthly ? '月份' : '年份'
+    const title = `${getAnalysisLabel(data.analysisType)}客户销售额分析`
+    const axisConfig = getAxisConfig(data.analysisType)
 
     // 构建dataset数据
     const categories = data.categories || []
@@ -221,16 +286,10 @@ const renderCustomerChart = (data) => {
         },
         xAxis: {
             type: 'category',
-            name: xAxisLabel,
+            name: axisConfig.xAxisLabel,
             axisLabel: {
-                rotate: isMonthly ? 45 : 0,
-                formatter: function (value) {
-                    if (isMonthly && value.length === 7) {
-                        // 简化月份显示为 MM
-                        return value.split('-')[1]
-                    }
-                    return value
-                }
+                rotate: axisConfig.rotate,
+                formatter: axisConfig.formatter
             }
         },
         yAxis: {
@@ -291,7 +350,6 @@ const renderCustomerPieChart = (data) => {
         customerPieChartInstance = echarts.init(customerPieChart.value)
     }
 
-    const isMonthly = data.analysisType === 'monthly'
     const categories = data.categories || []
     const series = data.series || []
 
@@ -309,7 +367,7 @@ const renderCustomerPieChart = (data) => {
 
     const option = {
         title: {
-            text: isMonthly ? '月度客户销售占比' : '年度客户销售占比',
+            text: `${getAnalysisLabel(data.analysisType)}客户销售占比`,
             left: 'center'
         },
         tooltip: {
@@ -357,17 +415,7 @@ const renderCustomerPieChart = (data) => {
 
 // 处理分析类型变化
 const handleAnalysisTypeChange = () => {
-    // 重置日期范围
-    const end = new Date()
-    const start = new Date()
-    if (analysisType.value === 'monthly') {
-        // 月度分析：最近30天
-        start.setDate(start.getDate() - 30)
-    } else {
-        // 年度分析：最近6个月
-        start.setMonth(start.getMonth() - 6)
-    }
-    dateRange.value = [start, end]
+    dateRange.value = getDefaultDateRange(analysisType.value)
 
     // 重新获取数据
     fetchStatistics()
@@ -414,9 +462,8 @@ const renderTrendChart = (data) => {
         trendChartInstance = echarts.init(trendChart.value)
     }
 
-    const isMonthly = data.analysisType === 'monthly'
-    const title = isMonthly ? '每日采购销售利润趋势' : '月度采购销售利润趋势'
-    const xAxisLabel = isMonthly ? '日期' : '月份'
+    const title = getTrendTitle(data.analysisType)
+    const axisConfig = getAxisConfig(data.analysisType)
 
     // 计算利润数据
     const profitData = (data.purchaseData || []).map((purchase, index) => {
@@ -451,16 +498,10 @@ const renderTrendChart = (data) => {
         xAxis: {
             type: 'category',
             data: data.categories || [],
-            name: xAxisLabel,
+            name: axisConfig.xAxisLabel,
             axisLabel: {
-                rotate: isMonthly ? 45 : 0,
-                formatter: function (value) {
-                    if (isMonthly) {
-                        // 简化日期显示
-                        return value.split('-').slice(1).join('-')
-                    }
-                    return value
-                }
+                rotate: axisConfig.rotate,
+                formatter: axisConfig.formatter
             }
         },
         yAxis: {
@@ -522,9 +563,8 @@ const renderComparisonChart = (data) => {
         comparisonChartInstance = echarts.init(comparisonChart.value)
     }
 
-    const isMonthly = data.analysisType === 'monthly'
-    const title = isMonthly ? '近期采购销售对比' : '采购销售对比'
-    const xAxisLabel = isMonthly ? '日期' : '月份'
+    const title = getComparisonTitle(data.analysisType)
+    const axisConfig = getAxisConfig(data.analysisType)
 
     const option = {
         title: {
@@ -557,16 +597,10 @@ const renderComparisonChart = (data) => {
         xAxis: {
             type: 'category',
             data: data.categories || [],
-            name: xAxisLabel,
+            name: axisConfig.xAxisLabel,
             axisLabel: {
-                rotate: isMonthly ? 45 : 0,
-                formatter: function (value) {
-                    if (isMonthly) {
-                        // 简化日期显示
-                        return value.split('-').slice(1).join('-')
-                    }
-                    return value
-                }
+                rotate: axisConfig.rotate,
+                formatter: axisConfig.formatter
             }
         },
         yAxis: {
@@ -610,17 +644,7 @@ const handleResize = () => {
 
 // 组件挂载时初始化
 onMounted(() => {
-    // 设置默认日期范围
-    const end = new Date()
-    const start = new Date()
-    if (analysisType.value === 'monthly') {
-        // 月度分析：最近30天
-        start.setDate(start.getDate() - 30)
-    } else {
-        // 年度分析：最近6个月
-        start.setMonth(start.getMonth() - 6)
-    }
-    dateRange.value = [start, end]
+    dateRange.value = getDefaultDateRange(analysisType.value)
 
     fetchStatistics()
 
@@ -628,7 +652,6 @@ onMounted(() => {
 })
 
 // 组件卸载时销毁图表实例
-import { onUnmounted } from 'vue'
 onUnmounted(() => {
     trendChartInstance?.dispose()
     comparisonChartInstance?.dispose()

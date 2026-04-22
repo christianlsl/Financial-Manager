@@ -87,21 +87,28 @@ def get_financial_summary(
 def get_detailed_statistics(
     start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
-    analysis_type: Optional[str] = Query("yearly", description="分析类型: yearly(年度) 或 monthly(月度)"),
+    analysis_type: Optional[str] = Query("monthly", description="分析类型: yearly(年度) / monthly(月度) / daily(日度)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """获取详细的统计数据，包括趋势分析、对比分析等"""
 
+    valid_analysis_types = {"yearly", "monthly", "daily"}
+    if analysis_type not in valid_analysis_types:
+        raise HTTPException(status_code=400, detail="analysis_type 必须是 yearly/monthly/daily")
+
     # 设置默认日期范围
     if not start_date or not end_date:
         end_date = date.today()
-        if analysis_type == "monthly":
-            # 月度分析：最近12个月
-            start_date = end_date - timedelta(days=365)  # 12个月
+        if analysis_type == "daily":
+            # 日度分析：最近30天
+            start_date = end_date - timedelta(days=30)
+        elif analysis_type == "yearly":
+            # 年度分析：最近5年
+            start_date = end_date - timedelta(days=365 * 5)
         else:
-            # 年度分析：最近6个月
-            start_date = end_date - timedelta(days=180)  # 6个月
+            # 月度分析：最近12个月
+            start_date = end_date - timedelta(days=365)
     else:
         start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
         end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
@@ -116,12 +123,12 @@ def get_detailed_statistics(
     purchase_total = db.query(func.coalesce(func.sum(Purchase.total_price), 0)).filter(base_filter).scalar()
     sale_total = db.query(func.coalesce(func.sum(Sale.total_price), 0)).filter(sale_base_filter).scalar()
     profit = float(sale_total) - float(purchase_total)
-    profit_rate = float(profit) / float(sale_total)
+    profit_rate = float(profit) / float(sale_total) if float(sale_total) else 0.0
 
     # 2. 获取趋势数据
-    if analysis_type == "monthly":
-        # 月度分析：按天统计
-        purchase_trend = (
+    if analysis_type == "daily":
+        # 日度分析：按天统计
+        purchase_rows = (
             db.query(
                 extract("year", Purchase.date).label("year"),
                 extract("month", Purchase.date).label("month"),
@@ -136,7 +143,7 @@ def get_detailed_statistics(
             .all()
         )
 
-        sale_trend = (
+        sale_rows = (
             db.query(
                 extract("year", Sale.date).label("year"),
                 extract("month", Sale.date).label("month"),
@@ -149,33 +156,25 @@ def get_detailed_statistics(
             .all()
         )
 
-        # 处理月度趋势数据
+        # 处理趋势数据
         trend_data = {}
-        for trend in purchase_trend:
+        for trend in purchase_rows:
             key = f"{int(trend.year)}-{int(trend.month):02d}-{int(trend.day):02d}"
             trend_data[key] = {"purchase": float(trend.purchase_amount), "sale": 0.0}
 
-        for trend in sale_trend:
+        for trend in sale_rows:
             key = f"{int(trend.year)}-{int(trend.month):02d}-{int(trend.day):02d}"
             if key in trend_data:
                 trend_data[key]["sale"] = float(trend.sale_amount)
             else:
                 trend_data[key] = {"purchase": 0.0, "sale": float(trend.sale_amount)}
 
-        # 转换为前端需要的格式
-        days = sorted(trend_data.keys())
-        purchase_data = [trend_data[day]["purchase"] for day in days]
-        sale_data = [trend_data[day]["sale"] for day in days]
-        profit_data = [trend_data[day]["sale"] - trend_data[day]["purchase"] for day in days]
+        categories = sorted(trend_data.keys())
+        comparison_limit = 30
 
-        # 月度对比数据：最近30天
-        comparison_days = days[-30:] if len(days) > 30 else days
-        comparison_purchase_data = purchase_data[-30:] if len(purchase_data) > 30 else purchase_data
-        comparison_sale_data = sale_data[-30:] if len(sale_data) > 30 else sale_data
-
-    else:
-        # 年度分析：按月统计
-        monthly_trend = (
+    elif analysis_type == "monthly":
+        # 月度分析：按月统计
+        purchase_rows = (
             db.query(
                 extract("year", Purchase.date).label("year"),
                 extract("month", Purchase.date).label("month"),
@@ -187,7 +186,7 @@ def get_detailed_statistics(
             .all()
         )
 
-        monthly_sale_trend = (
+        sale_rows = (
             db.query(
                 extract("year", Sale.date).label("year"),
                 extract("month", Sale.date).label("month"),
@@ -201,27 +200,66 @@ def get_detailed_statistics(
 
         # 处理趋势数据
         trend_data = {}
-        for trend in monthly_trend:
+        for trend in purchase_rows:
             key = f"{int(trend.year)}-{int(trend.month):02d}"
             trend_data[key] = {"purchase": float(trend.purchase_amount), "sale": 0.0}
 
-        for trend in monthly_sale_trend:
+        for trend in sale_rows:
             key = f"{int(trend.year)}-{int(trend.month):02d}"
             if key in trend_data:
                 trend_data[key]["sale"] = float(trend.sale_amount)
             else:
                 trend_data[key] = {"purchase": 0.0, "sale": float(trend.sale_amount)}
 
-        # 转换为前端需要的格式
-        months = sorted(trend_data.keys())
-        purchase_data = [trend_data[month]["purchase"] for month in months]
-        sale_data = [trend_data[month]["sale"] for month in months]
-        profit_data = [trend_data[month]["sale"] - trend_data[month]["purchase"] for month in months]
+        categories = sorted(trend_data.keys())
+        comparison_limit = 12
 
-        # 年度对比数据：最近12个月
-        comparison_months = months[-12:] if len(months) > 12 else months
-        comparison_purchase_data = purchase_data[-12:] if len(purchase_data) > 12 else purchase_data
-        comparison_sale_data = sale_data[-12:] if len(sale_data) > 12 else sale_data
+    else:
+        # 年度分析：按年统计
+        purchase_rows = (
+            db.query(
+                extract("year", Purchase.date).label("year"),
+                func.coalesce(func.sum(Purchase.total_price), 0).label("purchase_amount"),
+            )
+            .filter(base_filter)
+            .group_by(extract("year", Purchase.date))
+            .order_by("year")
+            .all()
+        )
+
+        sale_rows = (
+            db.query(
+                extract("year", Sale.date).label("year"),
+                func.coalesce(func.sum(Sale.total_price), 0).label("sale_amount"),
+            )
+            .filter(sale_base_filter)
+            .group_by(extract("year", Sale.date))
+            .order_by("year")
+            .all()
+        )
+
+        trend_data = {}
+        for trend in purchase_rows:
+            key = str(int(trend.year))
+            trend_data[key] = {"purchase": float(trend.purchase_amount), "sale": 0.0}
+
+        for trend in sale_rows:
+            key = str(int(trend.year))
+            if key in trend_data:
+                trend_data[key]["sale"] = float(trend.sale_amount)
+            else:
+                trend_data[key] = {"purchase": 0.0, "sale": float(trend.sale_amount)}
+
+        categories = sorted(trend_data.keys())
+        comparison_limit = 5
+
+    purchase_data = [trend_data[period]["purchase"] for period in categories]
+    sale_data = [trend_data[period]["sale"] for period in categories]
+    profit_data = [trend_data[period]["sale"] - trend_data[period]["purchase"] for period in categories]
+
+    comparison_categories = categories[-comparison_limit:] if len(categories) > comparison_limit else categories
+    comparison_purchase_data = purchase_data[-comparison_limit:] if len(purchase_data) > comparison_limit else purchase_data
+    comparison_sale_data = sale_data[-comparison_limit:] if len(sale_data) > comparison_limit else sale_data
 
     # 3. 获取分类对比数据（按业务类型）
     purchase_by_type = (
@@ -266,7 +304,8 @@ def get_detailed_statistics(
             .all()
         )
         categories = [str(int(year.year)) for year in years_query]
-    else:
+
+    elif analysis_type == "monthly":
         # 月度分析：按月份和客户分组
         customer_sales = (
             db.query(
@@ -293,6 +332,42 @@ def get_detailed_statistics(
         )
         categories = [f"{int(month.year)}-{int(month.month):02d}" for month in months_query]
 
+    else:
+        # 日度分析：按日期和客户分组
+        customer_sales = (
+            db.query(
+                Customer.name.label("customer_name"),
+                extract("year", Sale.date).label("year"),
+                extract("month", Sale.date).label("month"),
+                extract("day", Sale.date).label("day"),
+                func.coalesce(func.sum(Sale.total_price), 0).label("sale_amount"),
+            )
+            .select_from(Sale)
+            .join(Customer, Sale.customer_id == Customer.id)
+            .filter(sale_base_filter)
+            .group_by(
+                Customer.name,
+                extract("year", Sale.date),
+                extract("month", Sale.date),
+                extract("day", Sale.date),
+            )
+            .order_by("year", "month", "day", "customer_name")
+            .all()
+        )
+
+        days_query = (
+            db.query(
+                extract("year", Sale.date).label("year"),
+                extract("month", Sale.date).label("month"),
+                extract("day", Sale.date).label("day"),
+            )
+            .filter(sale_base_filter)
+            .group_by("year", "month", "day")
+            .order_by("year", "month", "day")
+            .all()
+        )
+        categories = [f"{int(day.year)}-{int(day.month):02d}-{int(day.day):02d}" for day in days_query]
+
     # 构建客户销售额数据结构
     customer_data = {}
     customers = set()
@@ -303,8 +378,10 @@ def get_detailed_statistics(
 
         if analysis_type == "yearly":
             key = str(int(sale.year))
-        else:
+        elif analysis_type == "monthly":
             key = f"{int(sale.year)}-{int(sale.month):02d}"
+        else:
+            key = f"{int(sale.year)}-{int(sale.month):02d}-{int(sale.day):02d}"
 
         if key not in customer_data:
             customer_data[key] = {}
@@ -356,19 +433,19 @@ def get_detailed_statistics(
             "profitRate": profit_rate,
         },
         "trend": {
-            "categories": days if analysis_type == "monthly" else months,
+            "categories": categories,
             "purchaseData": purchase_data,
             "saleData": sale_data,
             "analysisType": analysis_type,
         },
         "comparison": {
-            "categories": comparison_days if analysis_type == "monthly" else comparison_months,
+            "categories": comparison_categories,
             "purchaseData": comparison_purchase_data,
             "saleData": comparison_sale_data,
             "analysisType": analysis_type,
         },
         "profit": {
-            "categories": days if analysis_type == "monthly" else months,
+            "categories": categories,
             "profitData": profit_data,
             "analysisType": analysis_type,
         },
