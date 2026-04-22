@@ -22,12 +22,6 @@
                     </el-icon>
                   </template>
                 </el-input>
-                <el-select v-model="customerFilterCompanyId" placeholder="筛选公司" style="min-width: 200px" filterable
-                  clearable>
-                  <el-option :value="ALL_COMPANY_VALUE" label="全部客户" />
-                  <el-option :value="PERSONAL_COMPANY_VALUE" label="个人客户" />
-                  <el-option v-for="item in companies" :key="item.id" :value="item.id" :label="item.name" />
-                </el-select>
               </div>
               <el-button type="primary" @click="openCustomerDialog()">
                 <el-icon>
@@ -37,23 +31,40 @@
               </el-button>
             </div>
             <div class="catalogs__table-grid">
-              <el-table :data="filteredCustomers" border stripe v-loading="loadingCustomers"
+              <el-table :data="customerTreeData" border stripe v-loading="loadingCustomers" row-key="tree_id"
+                :tree-props="{ children: 'children' }" :expand-row-keys="customerExpandedRowKeys"
                 @current-change="handleCustomerSelect">
-                <el-table-column prop="name" label="客户名称" min-width="200" />
+                <el-table-column prop="name" label="客户名称" min-width="240">
+                  <template #default="{ row }">
+                    <div class="customer-tree-cell" :class="`customer-tree-cell--${row.type}`">
+                      <span class="customer-tree-cell__badge">{{ nodeTypeLabel(row.type) }}</span>
+                      <span class="customer-tree-cell__name">
+                        <template v-for="(part, index) in getHighlightedNameParts(row.name, row.type)"
+                          :key="`${row.tree_id}-name-${index}`">
+                          <mark v-if="part.highlight" class="customer-tree-cell__highlight">{{ part.text }}</mark>
+                          <span v-else>{{ part.text }}</span>
+                        </template>
+                      </span>
+                    </div>
+                  </template>
+                </el-table-column>
                 <el-table-column prop="company_name" label="所属公司" min-width="180">
-                  <template #default="{ row }">{{ row.company_name || '—' }}</template>
+                  <template #default="{ row }">{{ row.type === 'customer' ? (row.company_name || '—') : '—'
+                    }}</template>
                 </el-table-column>
                 <el-table-column prop="department_name" label="所属部门" min-width="160">
-                  <template #default="{ row }">{{ row.department_name || '—' }}</template>
+                  <template #default="{ row }">{{ row.type === 'customer' ? (row.department_name || '—') : '—'
+                    }}</template>
                 </el-table-column>
                 <el-table-column prop="position" label="职位" min-width="140">
-                  <template #default="{ row }">{{ row.position || '—' }}</template>
+                  <template #default="{ row }">{{ row.type === 'customer' ? (row.position || '—') : '—' }}</template>
                 </el-table-column>
                 <el-table-column prop="phone_number" label="联系电话" min-width="160">
-                  <template #default="{ row }">{{ row.phone_number || '—' }}</template>
+                  <template #default="{ row }">{{ row.type === 'customer' ? (row.phone_number || '—') : '—'
+                    }}</template>
                 </el-table-column>
                 <el-table-column prop="email" label="邮箱" min-width="200">
-                  <template #default="{ row }">{{ row.email || '—' }}</template>
+                  <template #default="{ row }">{{ row.type === 'customer' ? (row.email || '—') : '—' }}</template>
                 </el-table-column>
                 <el-table-column label="操作" width="160" fixed="right">
                   <template #default="{ row }">
@@ -70,11 +81,12 @@
                 </el-table-column>
               </el-table>
             </div>
-            <el-empty v-if="!customers.length && !loadingCustomers" description="暂无客户数据" />
-            <el-pagination v-if="pagination.customers.total > 0" class="catalogs__pagination"
-              :total="pagination.customers.total" :page-sizes="[10, 20, 50]" :page-size="pagination.customers.pageSize"
-              :current-page="pagination.customers.page" layout="total, sizes, prev, pager, next"
-              @current-change="handleCustomerPageChange" @size-change="handleCustomerPageSizeChange" />
+            <el-empty v-if="!customerTreeData.length && !loadingCustomers" :description="customerEmptyDescription" />
+            <el-pagination v-if="pagination.customerTree.total > 0" class="catalogs__pagination"
+              :total="pagination.customerTree.total" :page-sizes="[5, 10, 20]"
+              :page-size="pagination.customerTree.pageSize" :current-page="pagination.customerTree.page"
+              layout="total, sizes, prev, pager, next" @current-change="handleCustomerPageChange"
+              @size-change="handleCustomerPageSizeChange" />
           </el-tab-pane>
 
           <el-tab-pane label="公司" name="companies">
@@ -418,6 +430,7 @@ const auth = useAuthStore()
 const activeTab = ref('customers')
 const suppliersTab = ref('suppliers')
 const companies = ref([])
+const customerTreeCompanies = ref([])
 const types = ref([])
 const loading = ref(false)
 const loadingCompanies = ref(false)
@@ -426,11 +439,11 @@ const loadingTypes = ref(false)
 const loadingSuppliers = ref(false)
 const customers = ref([])
 const suppliers = ref([])
+const customerExpandedRowKeys = ref([])
 const selectedCompany = ref(null)
 
-const ALL_COMPANY_VALUE = 'all'
 const PERSONAL_COMPANY_VALUE = 0
-const customerFilterCompanyId = ref(ALL_COMPANY_VALUE)
+const PERSONAL_GROUP_ROW_KEY = 'personal-group'
 const customerSearchKeyword = ref('')
 const companySearchKeyword = ref('')
 const supplierSearchKeyword = ref('')
@@ -443,9 +456,9 @@ const pagination = reactive({
     pageSize: 10,
     total: 0
   },
-  customers: {
+  customerTree: {
     page: 1,
-    pageSize: 10,
+    pageSize: 5,
     total: 0
   },
   suppliers: {
@@ -460,34 +473,155 @@ const pagination = reactive({
   }
 })
 
-const filteredCustomers = computed(() => {
-  let result = customers.value
+const customerTreeData = computed(() => {
+  const hasKeyword = Boolean(customerSearchKeyword.value.trim())
+  const customersByCompany = new Map()
+  const personalCustomers = []
 
-  // 应用公司筛选
-  const companyFilter = customerFilterCompanyId.value
-  if (companyFilter === ALL_COMPANY_VALUE) {
-    result = customers.value
-  } else if (companyFilter === PERSONAL_COMPANY_VALUE) {
-    result = customers.value.filter((item) => item.company_id === 0)
-  } else {
-    result = customers.value.filter((item) => item.company_id === companyFilter)
-  }
+  customers.value.forEach((item) => {
+    if (item.company_id === PERSONAL_COMPANY_VALUE) {
+      personalCustomers.push(item)
+      return
+    }
+    if (!customersByCompany.has(item.company_id)) {
+      customersByCompany.set(item.company_id, [])
+    }
+    customersByCompany.get(item.company_id).push(item)
+  })
 
-  // 应用搜索关键词
-  const keyword = customerSearchKeyword.value.toLowerCase().trim()
-  if (keyword) {
-    result = result.filter((item) => {
-      return (
-        (item.name && item.name.toLowerCase().includes(keyword)) ||
-        (item.phone_number && item.phone_number.toLowerCase().includes(keyword)) ||
-        (item.email && item.email.toLowerCase().includes(keyword)) ||
-        (item.position && item.position.toLowerCase().includes(keyword))
-      )
+  const rows = []
+
+  if (pagination.customerTree.page === 1 && personalCustomers.length) {
+    rows.push({
+      tree_id: PERSONAL_GROUP_ROW_KEY,
+      type: 'personal-group',
+      name: '个人客户',
+      children: personalCustomers
+        .slice()
+        .sort((a, b) => a.id - b.id)
+        .map((item) => ({
+          ...item,
+          tree_id: `customer-${item.id}`,
+          type: 'customer',
+          company_name: '个人客户',
+          department_name: item.department_name || '—'
+        }))
     })
   }
 
-  return result
+  customerTreeCompanies.value.forEach((company) => {
+    const companyCustomers = customersByCompany.get(company.id) || []
+    const departments = Array.isArray(company.departments) ? company.departments : []
+    const departmentMap = new Map(departments.map((dept) => [dept.id, []]))
+    const unassignedCustomers = []
+
+    companyCustomers.forEach((item) => {
+      if (item.department_id && departmentMap.has(item.department_id)) {
+        departmentMap.get(item.department_id).push(item)
+      } else {
+        unassignedCustomers.push(item)
+      }
+    })
+
+    const departmentNodes = departments
+      .map((dept) => {
+        const members = departmentMap.get(dept.id) || []
+        if (hasKeyword && !members.length) {
+          return null
+        }
+        return {
+          ...dept,
+          tree_id: `department-${company.id}-${dept.id}`,
+          type: 'department',
+          company_id: company.id,
+          company_name: company.name,
+          children: members
+            .slice()
+            .sort((a, b) => a.id - b.id)
+            .map((item) => ({
+              ...item,
+              tree_id: `customer-${item.id}`,
+              type: 'customer',
+              company_name: company.name,
+              department_name: dept.name
+            }))
+        }
+      })
+      .filter(Boolean)
+
+    if (unassignedCustomers.length) {
+      departmentNodes.push({
+        tree_id: `department-${company.id}-unassigned`,
+        type: 'department',
+        id: null,
+        company_id: company.id,
+        company_name: company.name,
+        name: '未分配部门',
+        children: unassignedCustomers
+          .slice()
+          .sort((a, b) => a.id - b.id)
+          .map((item) => ({
+            ...item,
+            tree_id: `customer-${item.id}`,
+            type: 'customer',
+            company_name: company.name,
+            department_name: ''
+          }))
+      })
+    }
+
+    if (hasKeyword && !departmentNodes.length) {
+      return
+    }
+
+    rows.push({
+      ...company,
+      tree_id: `company-${company.id}`,
+      type: 'company',
+      children: departmentNodes
+    })
+  })
+
+  return rows
 })
+
+const hasCustomerSearchKeyword = computed(() => Boolean(customerSearchKeyword.value.trim()))
+
+const customerEmptyDescription = computed(() => {
+  return hasCustomerSearchKeyword.value ? '无匹配结果' : '暂无客户数据'
+})
+
+const NODE_TYPE_META = Object.freeze({
+  company: { label: '公司' },
+  department: { label: '部门' },
+  'personal-group': { label: '分组' },
+  customer: { label: '客户' }
+})
+
+function nodeTypeLabel(type) {
+  return NODE_TYPE_META[type]?.label || '节点'
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function getHighlightedNameParts(name, rowType) {
+  const text = typeof name === 'string' ? name : ''
+  const keyword = customerSearchKeyword.value.trim()
+  if (!text || !keyword || rowType !== 'customer') {
+    return [{ text, highlight: false }]
+  }
+
+  const matcher = new RegExp(`(${escapeRegExp(keyword)})`, 'ig')
+  return text
+    .split(matcher)
+    .filter((part) => part.length > 0)
+    .map((part) => ({
+      text: part,
+      highlight: part.toLowerCase() === keyword.toLowerCase()
+    }))
+}
 
 const companyDialog = reactive({
   visible: false,
@@ -660,27 +794,30 @@ function handleCompanySelect(company) {
 }
 
 function handleCustomerSelect(customer) {
+  if (!customer || customer.type !== 'customer') {
+    return
+  }
   // 客户选中处理
   console.log('选中客户:', customer)
 }
 
 // 客户分页处理函数
 function handleCustomerPageChange(page) {
-  pagination.customers.page = page
+  pagination.customerTree.page = page
   loadCustomers()
 }
 
 function handleCustomerPageSizeChange(pageSize) {
-  pagination.customers.pageSize = pageSize
-  pagination.customers.page = 1
+  pagination.customerTree.pageSize = pageSize
+  pagination.customerTree.page = 1
   loadCustomers()
 }
 
-// 客户筛选变更时重置分页
-watch([customerFilterCompanyId, customerSearchKeyword], () => {
-  pagination.customers.page = 1
+// 客户搜索变更时重置分页
+watch(customerSearchKeyword, () => {
+  pagination.customerTree.page = 1
   loadCustomers()
-}, { deep: true })
+})
 
 // 供应商选择处理
 function handleSupplierSelect(supplier) {
@@ -806,11 +943,6 @@ async function loadCompanies() {
         // So it should be fine.
       }
     }
-
-    if (typeof customerFilterCompanyId.value === 'number' && customerFilterCompanyId.value > 0) {
-      const exists = companies.value.some((item) => item.id === customerFilterCompanyId.value)
-      if (!exists) customerFilterCompanyId.value = ALL_COMPANY_VALUE
-    }
   } catch (error) {
     const message = error?.response?.data?.detail || error?.message || '加载公司列表失败'
     ElMessage.error(message)
@@ -822,49 +954,63 @@ async function loadCompanies() {
 async function loadCustomers() {
   loadingCustomers.value = true
   try {
-    const params = {
-      skip: (pagination.customers.page - 1) * pagination.customers.pageSize,
-      limit: pagination.customers.pageSize,
-      q: customerSearchKeyword.value.trim()
+    const keyword = customerSearchKeyword.value.trim()
+    const companyParams = {
+      skip: (pagination.customerTree.page - 1) * pagination.customerTree.pageSize,
+      limit: pagination.customerTree.pageSize
     }
 
-    // 添加公司筛选条件
-    if (customerFilterCompanyId.value !== ALL_COMPANY_VALUE) {
-      params.company_id = customerFilterCompanyId.value
-    }
+    const [companyListResp, companyCountResp] = await Promise.all([
+      api.get('/companies/', { params: companyParams }),
+      api.get('/companies/count')
+    ])
 
-    const { data } = await api.get('/customers/', { params })
+    const currentPageCompanies = Array.isArray(companyListResp.data) ? companyListResp.data : []
+    customerTreeCompanies.value = currentPageCompanies
+    pagination.customerTree.total = Number(companyCountResp.data) || 0
 
-    // 获取总数（带筛选条件）
-    const countParams = {}
-    if (customerFilterCompanyId.value !== ALL_COMPANY_VALUE) {
-      countParams.company_id = customerFilterCompanyId.value
-    }
-    if (customerSearchKeyword.value.trim()) {
-      countParams.q = customerSearchKeyword.value.trim()
-    }
-
-    const { data: count } = await api.get('/customers/count', { params: countParams })
-    pagination.customers.total = count
-
-    // 处理数据格式化，保持与原代码相同的格式转换逻辑
-    const formattedData = (data || []).flatMap((group) => {
-      const resolvedGroupCompanyId = typeof group.company_id === 'number' ? group.company_id : PERSONAL_COMPANY_VALUE
-      return (group.customers || []).map((customer) => {
-        const customerCompanyId = typeof customer.company_id === 'number' ? customer.company_id : resolvedGroupCompanyId
-        return {
+    const normalizeGroups = (groups) => {
+      return (groups || []).flatMap((group) => {
+        const resolvedGroupCompanyId = typeof group.company_id === 'number' ? group.company_id : PERSONAL_COMPANY_VALUE
+        return (group.customers || []).map((customer) => ({
           ...customer,
-          company_id: customerCompanyId
-        }
+          company_id: typeof customer.company_id === 'number' ? customer.company_id : resolvedGroupCompanyId
+        }))
       })
+    }
+
+    const companyCustomerRequests = currentPageCompanies.map((company) => {
+      const params = {
+        company_id: company.id,
+        limit: 1000
+      }
+      if (keyword) {
+        params.q = keyword
+      }
+      return api.get('/customers/', { params })
     })
 
-    customers.value = formattedData.sort((a, b) => {
-      const companyA = a.company_id ?? -1
-      const companyB = b.company_id ?? -1
-      if (companyA !== companyB) return companyA - companyB
-      return a.id - b.id
-    })
+    if (pagination.customerTree.page === 1) {
+      const personalParams = {
+        company_id: PERSONAL_COMPANY_VALUE,
+        limit: 1000
+      }
+      if (keyword) {
+        personalParams.q = keyword
+      }
+      companyCustomerRequests.push(api.get('/customers/', { params: personalParams }))
+    }
+
+    const customerResponses = await Promise.all(companyCustomerRequests)
+    customers.value = customerResponses
+      .flatMap((resp) => normalizeGroups(resp.data))
+      .sort((a, b) => a.id - b.id)
+
+    const expandedKeys = currentPageCompanies.map((item) => `company-${item.id}`)
+    if (pagination.customerTree.page === 1 && customers.value.some((item) => item.company_id === PERSONAL_COMPANY_VALUE)) {
+      expandedKeys.unshift(PERSONAL_GROUP_ROW_KEY)
+    }
+    customerExpandedRowKeys.value = expandedKeys
   } catch (error) {
     const message = error?.response?.data?.detail || error?.message || '加载客户列表失败'
     ElMessage.error(message)
@@ -966,13 +1112,7 @@ async function openCustomerDialog(customer) {
     customerDialog.form.company_id = typeof customer.company_id === 'number' ? customer.company_id : PERSONAL_COMPANY_VALUE
     customerDialog.form.department_id = customer.department_id ?? null
   } else {
-    if (customerFilterCompanyId.value === PERSONAL_COMPANY_VALUE) {
-      customerDialog.form.company_id = PERSONAL_COMPANY_VALUE
-    } else if (customerFilterCompanyId.value !== ALL_COMPANY_VALUE) {
-      customerDialog.form.company_id = customerFilterCompanyId.value
-    } else {
-      customerDialog.form.company_id = PERSONAL_COMPANY_VALUE
-    }
+    customerDialog.form.company_id = PERSONAL_COMPANY_VALUE
   }
 }
 
@@ -1304,5 +1444,58 @@ onMounted(async () => {
 
 .catalogs__table-grid {
   display: grid;
+}
+
+.customer-tree-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.customer-tree-cell__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  border: 1px solid transparent;
+}
+
+.customer-tree-cell__name {
+  color: #1f2d3d;
+}
+
+.customer-tree-cell__highlight {
+  color: #8a3b00;
+  background: #ffe4bf;
+  border-radius: 4px;
+  padding: 0 2px;
+}
+
+.customer-tree-cell--company .customer-tree-cell__badge {
+  color: #1557a0;
+  background: #e7f2ff;
+  border-color: #b8d8ff;
+}
+
+.customer-tree-cell--department .customer-tree-cell__badge {
+  color: #6f4e12;
+  background: #fff4dc;
+  border-color: #f7d99c;
+}
+
+.customer-tree-cell--personal-group .customer-tree-cell__badge {
+  color: #5f2f8f;
+  background: #f3e9ff;
+  border-color: #ddc5ff;
+}
+
+.customer-tree-cell--customer .customer-tree-cell__badge {
+  color: #166534;
+  background: #e7f8ee;
+  border-color: #b8e7ca;
 }
 </style>
