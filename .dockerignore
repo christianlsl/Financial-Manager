@@ -1,0 +1,14 @@
+backend/.venv
+backend/**/__pycache__
+backend/app/keys/
+backend/config.yaml
+backend/tests/
+frontend/node_modules
+frontend/src
+frontend/public
+frontend/package.json
+frontend/package-lock.json
+frontend/vite.config.*
+.git
+*.db
+docs/
