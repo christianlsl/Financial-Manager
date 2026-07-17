@@ -326,7 +326,7 @@ async function downloadXlsx() {
   worksheet.columns = [
     { header: '日期', key: 'date', width: 15, style: commonStyle },
     { header: '项目', key: 'item_name', width: 30, style: commonStyle },
-    { header: '公司', key: 'company_name', width: 20, style: commonStyle },
+    { header: '公司', key: 'company_name', width: 30, style: commonStyle },
     { header: '部门', key: 'department_name', width: 15, style: commonStyle },
     { header: '客户', key: 'customer_name', width: 15, style: commonStyle },
     { header: '类型', key: 'type_name', width: 15, style: commonStyle },
@@ -369,7 +369,7 @@ async function downloadXlsx() {
     }
 
     const addedRow = worksheet.addRow(rowData)
-    addedRow.height = 80 // 固定行高
+    addedRow.height = 25 // 固定行高
 
     if (row.image_url) {
       try {
@@ -384,8 +384,8 @@ async function downloadXlsx() {
         }
 
         // Calculate dimensions based on aspect ratio
-        let imgWidth = 150
-        let imgHeight = 100
+        let imgWidth = 200
+        let imgHeight = 30
         try {
           const blob = new Blob([buffer])
           const url = URL.createObjectURL(blob)
@@ -396,8 +396,8 @@ async function downloadXlsx() {
             img.onerror = resolve
           })
           if (img.width && img.height) {
-            const maxWidth = 200
-            const maxHeight = 100
+            const maxWidth = imgWidth
+            const maxHeight = imgHeight
             const widthRatio = maxWidth / img.width
             const heightRatio = maxHeight / img.height
             const ratio = Math.min(widthRatio, heightRatio)

@@ -370,7 +370,7 @@ docker save financial-manager-backend | gzip > backend-image.tar.gz
 
 1. **`config.yaml` 中数据库路径**
 
-   代码中 `repo_root` 取的是 `config.py` 向上 3 级目录，容器内解析为 `/app`。因此相对路径必须从项目根算起：
+   代码中 `repo_root` 取的是 `config.py` 向上 3 级目录，容器内解析为 `/app`。因此相对路径必须从项目根Financial-Manager/算起：
 
    ```yaml
    # 正确
