@@ -361,9 +361,9 @@ async function downloadXlsx() {
       department_name: row.department_name || '—',
       customer_name: row.customer_name || '—',
       type_name: row.type_name || '—',
-      items_count: row.items_count ?? '',
-      unit_price: row.unit_price !== undefined && row.unit_price !== null ? formatAmount(row.unit_price) : '',
-      total_price: row.total_price !== undefined && row.total_price !== null ? formatAmount(row.total_price) : '',
+      items_count: row.items_count !== undefined && row.items_count !== null ? Number(row.items_count) : '',
+      unit_price: row.unit_price !== undefined && row.unit_price !== null ? Number(row.unit_price) : '',
+      total_price: row.total_price !== undefined && row.total_price !== null ? Number(row.total_price) : '',
       status: statusLabel(row.status),
       notes: row.notes || ''
     }
