@@ -18,3 +18,21 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
+  mcp:
+    build:
+      context: .
+      dockerfile: mcp-server/Dockerfile
+    environment:
+      - FM_API_BASE_URL=http://backend:9910
+      - FM_MCP_TOKEN=${FM_MCP_TOKEN:-}
+      - FM_MCP_HOST=0.0.0.0
+      - FM_MCP_PORT=9911
+      - FM_INVOICE_DIR=/app/invoices
+    volumes:
+      - ./data/invoices:/app/invoices
+    ports:
+      - "9911:9911"
+    depends_on:
+      - backend
+    restart: unless-stopped

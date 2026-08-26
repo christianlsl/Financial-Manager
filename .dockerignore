@@ -9,6 +9,8 @@ frontend/public
 frontend/package.json
 frontend/package-lock.json
 frontend/vite.config.*
+mcp-server/.venv
+mcp-server/**/__pycache__
 .git
 *.db
 docs/
