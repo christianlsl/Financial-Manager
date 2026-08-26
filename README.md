@@ -294,14 +294,7 @@ The frontend is configured to use relative paths (e.g., `/api/users`) for API ca
 
 ## Docker 部署（fnos 等 NAS 环境）
 
-### 前置准备
-
-1. 本地构建前端
-
-   ```bash
-   cd frontend
-   npm run build
-   ```
+1. 若迁移，需要把旧数据库放入./data/
 
 2. 准备 `backend/config.yaml`，修改数据库路径：
 
@@ -312,59 +305,16 @@ The frontend is configured to use relative paths (e.g., `/api/users`) for API ca
 
    > 路径相对于项目根目录（容器内 `repo_root` = `/app`），必须包含 `./backend/` 前缀。
 
-### 构建并导出后端镜像
-
-```bash
-docker compose build backend
-docker save financial-manager-backend | gzip > backend-image.tar.gz
-```
-
-> nginx 使用官方 `nginx:alpine` 镜像，无需构建和导出，fnos 会自动拉取。
-
-### 部署到 fnos
-
-1. **上传文件到 fnos**
-
-   将以下文件传到 fnos 上同一目录：
-
-   ```
-   <部署目录>/
-   ├── docker-compose.yml
-   ├── Dockerfile
-   ├── backend-image.tar.gz
-   ├── backend/
-   │   └── config.yaml
-   ├── frontend/
-   │   └── dist/          ← 已构建的前端产物
-   ├── nginx/
-   │   └── nginx.conf
-   └── data/
-       └── financial_manager.db   ← 数据库文件
-   ```
-
-2. **导入后端镜像**
-
-   ```bash
-   docker load < backend-image.tar.gz
-   ```
-
 3. **启动服务**
-
-   ```bash
-   docker compose up -d
-   ```
-
-   nginx 会自动从 Docker Hub 拉取 `nginx:alpine`。
+   + 把项目文件夹传到服务器，注意前端dist文件的权限（参考注意事项2）。
+   + 随后执行：
+      ```bash
+      docker compose up -d --build
+      ```
 
 4. **验证**
 
    访问 `http://<fnos-ip>:5678` 查看前端页面，访问 `http://<fnos-ip>:5678/api/docs` 查看 API 文档。
-
-### 更新部署
-
-- **更新前端**：重新 `npm run build`，替换 `frontend/dist/`，执行 `docker compose restart nginx`
-- **更新后端**：重新构建镜像并替换，执行 `docker compose up -d`
-- **更新数据库**：替换 `data/financial_manager.db`，执行 `docker compose restart backend`
 
 ### 注意事项
 
