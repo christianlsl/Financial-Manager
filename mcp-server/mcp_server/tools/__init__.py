@@ -33,7 +33,6 @@ ALL_TOOLS = [
     (mutations, "create_department"),
     (mutations, "create_type"),
     # Invoices
-    (invoices, "generate_invoice"),
     (invoices, "generate_invoices_batch"),
 ]
 

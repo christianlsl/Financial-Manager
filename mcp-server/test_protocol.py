@@ -98,10 +98,16 @@ async def run_session(email: str, password: str, do_login: bool, label: str):
             sale_id = created["id"]
             print(f"[OK] create_sale ({label}): id={sale_id}")
 
-            # Invoice with attachment
-            res = await session.call_tool("generate_invoice", {"sale_id": sale_id})
+            # Batch export with attachment
+            res = await session.call_tool(
+                "generate_invoices_batch",
+                {
+                    "date_from": "2026-08-25",
+                    "date_to": "2026-08-27",
+                },
+            )
             has_attachment = any(b.type == "resource" for b in res.content)
-            print(f"[OK] generate_invoice attachment ({label}):", has_attachment)
+            print(f"[OK] generate_invoices_batch attachment ({label}):", has_attachment)
             assert has_attachment
 
             # Cleanup

@@ -20,14 +20,14 @@
 - **不落盘**：用户密码只存在于会话内存中（用于 Token 过期自动重登），不写入任何文件或环境变量。
 - **可选网关防护**：设置 `FM_MCP_TOKEN` 后，所有连接还需携带同一个 Bearer Token（相当于产品级访问码）；留空则只依赖用户级登录。
 
-## 提供的能力（27 个工具）
+## 提供的能力（26 个工具）
 
 | 类别 | 工具 |
 |------|------|
 | 认证 | `login` 登录、`logout` 退出、`whoami` 查看当前账号 |
 | 查询 | `get_summary` 财务概览、`get_statistics` 详细统计、`list_sales`、`get_sale`、`list_purchases`、`get_purchase`、`list_customers`、`list_suppliers`、`list_companies`、`list_departments`、`list_types` |
 | 修改 | `create_sale`、`update_sale`、`delete_sale`、`create_purchase`、`update_purchase`、`delete_purchase`、`create_customer`、`create_supplier`、`create_company`、`create_department`、`create_type` |
-| 账单 | `generate_invoice` 单条生成、`generate_invoices_batch` 批量生成（xlsx） |
+| 账单 | `generate_invoices_batch` 批量导出销售表格（xlsx） |
 
 > 删除类工具描述中已提示 AI「先向用户确认再执行」；未登录时所有业务工具会返回引导登录的提示。
 

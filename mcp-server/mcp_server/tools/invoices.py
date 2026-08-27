@@ -1,7 +1,7 @@
 """Invoice (.xlsx) generation MCP tools.
 
-A formal sales bill is produced from a sale record via openpyxl:
-company header, customer info, item details, amount totals and remarks.
+Batch export produces a sales table workbook that matches the frontend
+download layout and preserves every field returned by the sales API.
 The file is saved under the configured invoice directory and is also
 returned to the MCP client as a binary attachment (EmbeddedResource)
 so WorkBuddy can present it for download.
@@ -52,6 +52,22 @@ _CENTER = Alignment(horizontal="center", vertical="center")
 _LEFT = Alignment(horizontal="left", vertical="center")
 _RIGHT = Alignment(horizontal="right", vertical="center")
 
+_BASE_EXPORT_COLUMNS = [
+    ("date", "日期", 15),
+    ("item_name", "项目", 30),
+    ("company_name", "公司", 30),
+    ("department_name", "部门", 15),
+    ("customer_name", "客户", 15),
+    ("type_name", "类型", 15),
+    ("items_count", "数量", 10),
+    ("unit_price", "单价", 15),
+    ("total_price", "金额", 15),
+    ("image", "图片", 28),
+    ("status", "状态", 15),
+    ("notes", "备注", 30),
+]
+_BASE_EXPORT_KEYS = [key for key, _, _ in _BASE_EXPORT_COLUMNS]
+
 
 def _json(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False, default=str)
@@ -65,158 +81,86 @@ def _amount(value: Any) -> str:
         return str(value)
 
 
-def _company_name(ctx: Context) -> str:
-    """The bill header uses the logged-in user's company name."""
-    me = _client(ctx).get("/auth/me")
-    return me.get("company_name") or "财务管理"
+def _coerce_export_value(key: str, value: Any) -> Any:
+    if value is None:
+        return ""
+    if key == "status":
+        return STATUS_CN.get(str(value), str(value))
+    if key in {"items_count"}:
+        try:
+            return int(Decimal(str(value)))
+        except Exception:
+            return value
+    if key in {"unit_price", "total_price"}:
+        try:
+            return float(Decimal(str(value)))
+        except Exception:
+            return value
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, ensure_ascii=False, default=str)
+    if isinstance(value, (datetime, date_type)):
+        return value.isoformat()
+    return value
 
 
-def _build_workbook(sale: dict, company_name: str, kind: str = "销售") -> Workbook:
+def _build_batch_workbook(items: list[dict[str, Any]]) -> Workbook:
     wb = Workbook()
     ws = wb.active
-    ws.title = "账单"
+    ws.title = "销售表"
 
-    title = "销 售 账 单" if kind == "销售" else "采 购 账 单"
-    bill_no = f"{kind[:1]}-{sale['id']:06d}"
-    status = STATUS_CN.get(sale.get("status", ""), sale.get("status", ""))
+    extra_keys: list[str] = []
+    seen_keys = set(_BASE_EXPORT_KEYS)
+    for item in items:
+        for key in item.keys():
+            if key not in seen_keys:
+                seen_keys.add(key)
+                extra_keys.append(key)
 
-    # Column widths
-    for col, width in zip("ABCDEF", (8, 32, 12, 16, 16, 28)):
-        ws.column_dimensions[col].width = width
+    export_columns = _BASE_EXPORT_COLUMNS + [(key, key, 18) for key in extra_keys]
+    for idx, (_, _, width) in enumerate(export_columns, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = width
 
-    # Row 1: title
-    ws.merge_cells("A1:F1")
-    c = ws["A1"]
-    c.value = title
-    c.font = _FONT_TITLE
-    c.alignment = _CENTER
-    ws.row_dimensions[1].height = 36
-
-    # Row 2: company header
-    ws.merge_cells("A2:F2")
-    c = ws["A2"]
-    c.value = f"开单单位：{company_name}"
-    c.font = _FONT_HEADER
-    c.alignment = _CENTER
-    ws.row_dimensions[2].height = 22
-
-    # Row 3: bill meta
-    ws.merge_cells("A3:F3")
-    c = ws["A3"]
-    c.value = (
-        f"账单编号：{bill_no}    开单日期：{sale['date']}    "
-        f"状态：{status}    生成时间：{datetime.now():%Y-%m-%d %H:%M}"
-    )
-    c.font = _FONT_SMALL
-    c.alignment = _CENTER
-    ws.row_dimensions[3].height = 18
-
-    # Row 4: blank spacer
-    ws.row_dimensions[4].height = 8
-
-    # Row 5: customer / supplier info
-    if kind == "销售":
-        counterparty = sale.get("customer_name") or "个人客户"
-        org = sale.get("company_name") or ""
-        info_lines = f"客户：{counterparty}    所属公司：{org}"
-    else:
-        counterparty = sale.get("supplier_name") or ""
-        info_lines = f"供应商：{counterparty}"
-    ws.merge_cells("A5:F5")
-    c = ws["A5"]
-    c.value = info_lines
-    c.font = _FONT_BODY
-    c.alignment = _LEFT
-
-    # Row 6: table header
-    headers = ["序号", "物料名称", "数量", "单价（元）", "金额（元）", "备注"]
-    for idx, h in enumerate(headers, start=1):
-        cell = ws.cell(row=6, column=idx, value=h)
+    for column_index, (_, label, _) in enumerate(export_columns, start=1):
+        cell = ws.cell(row=1, column=column_index, value=label)
         cell.font = _FONT_HEADER
         cell.fill = _FILL_HEADER
         cell.alignment = _CENTER
         cell.border = _BORDER
-    ws.row_dimensions[6].height = 22
 
-    # Row 7: item row
-    item_name = sale.get("item_name") or ""
-    items_count = sale.get("items_count")
-    unit_price = sale.get("unit_price")
-    total_price = sale.get("total_price")
-    notes = sale.get("notes") or ""
-    values = ["1", item_name, items_count, _amount(unit_price), _amount(total_price), notes]
-    for idx, v in enumerate(values, start=1):
-        cell = ws.cell(row=7, column=idx, value=v)
-        cell.font = _FONT_BODY
-        cell.border = _BORDER
-        cell.alignment = _CENTER if idx in (1, 3) else _LEFT if idx in (2, 6) else _RIGHT
-    ws.row_dimensions[7].height = 22
+    for row_index, item in enumerate(items, start=2):
+        row = dict(item)
+        row["image"] = item.get("image_url") or item.get("image") or ""
+        for column_index, (key, _, _) in enumerate(export_columns, start=1):
+            if key == "image":
+                image_url = item.get("image_url") or item.get("image") or ""
+                value = "图片" if image_url else "无"
+            else:
+                value = _coerce_export_value(key, row.get(key))
 
-    # Row 8: total row
-    ws.merge_cells("A8:D8")
-    total_label = ws["A8"]
-    total_label.value = "合计"
-    total_label.font = _FONT_HEADER
-    total_label.fill = _FILL_TOTAL
-    total_label.alignment = _RIGHT
-    total_label.border = _BORDER
-    for col in ("B8", "C8", "D8"):
-        ws[col].fill = _FILL_TOTAL
-        ws[col].border = _BORDER
-    total_cell = ws["E8"]
-    total_cell.value = _amount(total_price)
-    total_cell.font = Font(name="微软雅黑", size=12, bold=True, color="C00000")
-    total_cell.fill = _FILL_TOTAL
-    total_cell.alignment = _RIGHT
-    total_cell.border = _BORDER
-    ws["F8"].fill = _FILL_TOTAL
-    ws["F8"].border = _BORDER
-    ws.row_dimensions[8].height = 24
-
-    # Row 10: remarks
-    if notes:
-        ws.merge_cells("A10:F10")
-        c = ws["A10"]
-        c.value = f"备注：{notes}"
-        c.font = _FONT_SMALL
-        c.alignment = _LEFT
+            cell = ws.cell(row=row_index, column=column_index, value=value)
+            cell.font = _FONT_BODY
+            cell.border = _BORDER
+            if key == "image" and (item.get("image_url") or item.get("image")):
+                cell.hyperlink = str(item.get("image_url") or item.get("image"))
+                cell.font = Font(name="微软雅黑", size=11, color="0563C1", underline="single")
+            if key in {"items_count"}:
+                cell.alignment = _CENTER
+            elif key in {"unit_price", "total_price"}:
+                cell.alignment = _RIGHT
+            else:
+                cell.alignment = _LEFT
 
     return wb
 
 
-def _save_and_attachment(wb: Workbook, bill_no: str, kind: str) -> tuple[str, str]:
+def _save_and_attachment(wb: Workbook, file_stem: str) -> tuple[str, str]:
     """Save workbook to disk and build a base64 attachment payload."""
     settings.invoice_dir.mkdir(parents=True, exist_ok=True)
-    path = settings.invoice_dir / f"{bill_no}.xlsx"
+    path = settings.invoice_dir / f"{file_stem}.xlsx"
     wb.save(path)
     raw = path.read_bytes()
     b64 = base64.b64encode(raw).decode("ascii")
     return str(path), b64
-
-
-def generate_invoice(sale_id: int, ctx: Context = None) -> Any:
-    """根据销售记录生成一份正式的 xlsx 账单（可直接发给客户）。
-
-    会返回 xlsx 文件供下载，同时给出账单摘要。适合单条开票场景。
-
-    Args:
-        sale_id: 销售记录 ID。
-    """
-    sale = _client(ctx).get(f"/sales/{sale_id}")
-    wb = _build_workbook(sale, _company_name(ctx), kind="销售")
-    bill_no = f"销-{sale_id:06d}"
-    path, b64 = _save_and_attachment(wb, bill_no, "销售")
-
-    summary = (
-        f"账单已生成：{path}\n"
-        f"账单编号：{bill_no}\n"
-        f"客户：{sale.get('customer_name') or '个人客户'}\n"
-        f"物料：{sale.get('item_name')}  数量：{sale.get('items_count')}  "
-        f"单价：{_amount(sale.get('unit_price'))}  "
-        f"金额：{_amount(sale.get('total_price'))} 元\n"
-        f"状态：{STATUS_CN.get(sale.get('status', ''), sale.get('status', ''))}"
-    )
-    return _attachment_response(summary, bill_no, b64)
 
 
 def _coerce_date(value: date_type | str | None) -> str | None:
@@ -231,18 +175,20 @@ def _coerce_date(value: date_type | str | None) -> str | None:
 def generate_invoices_batch(
     date_from: date_type | str | None = None,
     date_to: date_type | str | None = None,
+    company_id: int | None = None,
     customer_id: int | None = None,
     status: str | None = None,
     limit: int = 50,
     ctx: Context = None,
 ) -> Any:
-    """批量生成销售账单（按日期范围/客户筛选），每单一个 xlsx 文件。
+    """批量导出销售表格，字段和前端下载保持一致。
 
-    用于月末/周报批量开票。文件数量受 limit 限制，最多 200 个。
+    用于月末/周报批量导出。文件数量受 limit 限制，最多 200 条。
 
     Args:
         date_from: 起始日期 YYYY-MM-DD。
         date_to: 结束日期 YYYY-MM-DD。
+        company_id: 仅导出该公司的销售记录。
         customer_id: 仅生成该客户的账单。
         status: 仅生成该状态的账单：draft / sent / paid。
         limit: 最多生成多少个账单，默认 50，最大 200。
@@ -255,6 +201,8 @@ def generate_invoices_batch(
         params["date_from"] = d_from
     if d_to:
         params["date_to"] = d_to
+    if company_id is not None:
+        params["company_id"] = company_id
     if customer_id is not None:
         params["customer_id"] = customer_id
     if status:
@@ -263,25 +211,25 @@ def generate_invoices_batch(
     data = _client(ctx).get("/sales/", params=params)
     items = data.get("items", [])
     if not items:
-        return _json({"message": "没有符合条件的销售记录，未生成账单"})
+        return _json({"message": "没有符合条件的销售记录，未生成表格"})
 
-    company_name = _company_name(ctx)
-    paths: list[str] = []
-    attachments: list[str] = []
+    wb = _build_batch_workbook(items)
+    file_stem = f"销售表格_{datetime.now():%Y-%m-%d_%H%M%S}"
+    path, b64 = _save_and_attachment(wb, file_stem)
+
     total_amount = Decimal("0")
     for sale in items:
-        wb = _build_workbook(sale, company_name, kind="销售")
-        bill_no = f"销-{sale['id']:06d}"
-        path, b64 = _save_and_attachment(wb, bill_no, "销售")
-        paths.append(path)
-        attachments.append(b64)
-        total_amount += Decimal(str(sale.get("total_price") or 0))
+        try:
+            total_amount += Decimal(str(sale.get("total_price") or 0))
+        except Exception:
+            continue
 
     summary = (
-        f"已生成 {len(items)} 份账单：\n" + "\n".join(paths)
-        + f"\n合计金额：{_amount(total_amount)} 元"
+        f"已导出 {len(items)} 条销售记录：\n"
+        f"{path}\n"
+        f"合计金额：{_amount(total_amount)} 元"
     )
-    return _attachment_response(summary, "批量账单", attachments)
+    return _attachment_response(summary, file_stem, b64)
 
 
 def _attachment_response(summary: str, base_name: str, blobs: str | list[str]) -> Any:
@@ -320,4 +268,4 @@ def _attachment_response(summary: str, base_name: str, blobs: str | list[str]) -
         return _json({"summary": summary, "files": blobs})
 
 
-__all__ = ["generate_invoice", "generate_invoices_batch"]
+__all__ = ["generate_invoices_batch"]

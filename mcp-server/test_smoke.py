@@ -13,7 +13,9 @@ Run: uv run python test_smoke.py
 import json
 import os
 import sys
+import base64
 from datetime import date, timedelta
+from io import BytesIO
 
 os.environ.setdefault("FM_API_BASE_URL", "http://127.0.0.1:9910")
 EMAIL = os.environ.get("FM_TEST_EMAIL", "")
@@ -145,35 +147,32 @@ def main():
     fetched = json.loads(queries.get_sale(sale_id, ctx=ctx))
     check("get_sale", fetched["id"] == sale_id and fetched["total_price"] == "76.50")
 
-    # --- invoice generation ---
-    result = invoices.generate_invoice(sale_id, ctx=ctx)
-    from mcp.types import CallToolResult, EmbeddedResource, TextContent
-    check("generate_invoice", isinstance(result, CallToolResult))
-    embedded = [r for r in result.content if isinstance(r, EmbeddedResource)]
-    texts = [r for r in result.content if isinstance(r, TextContent)]
-    check("invoice has xlsx attachment", len(embedded) == 1, f"blob len={len(embedded[0].resource.blob)}")
-    check("invoice has summary", len(texts) == 1)
-    bill_file = f"/tmp/fm-mcp-invoices/销-{sale_id:06d}.xlsx"
-    check("invoice saved to disk", os.path.exists(bill_file), bill_file)
-    print("   invoice summary:", texts[0].text)
-
-    # verify xlsx content
-    from openpyxl import load_workbook
-    wb = load_workbook(bill_file)
-    ws = wb.active
-    title = ws["A1"].value
-    total = ws["E8"].value
-    check("xlsx title", title == "销 售 账 单", f"title={title!r}")
-    check("xlsx total", "76.50" in str(total), f"total={total!r}")
-    wb.close()
-
     # --- batch invoices ---
+    from mcp.types import CallToolResult, EmbeddedResource, TextContent
     batch = invoices.generate_invoices_batch(
         date_from=(date.today() - timedelta(days=1)).isoformat(),
         date_to=date.today().isoformat(),
         ctx=ctx,
     )
     check("batch invoices", isinstance(batch, CallToolResult))
+    embedded = [r for r in batch.content if isinstance(r, EmbeddedResource)]
+    texts = [r for r in batch.content if isinstance(r, TextContent)]
+    check("batch has xlsx attachment", len(embedded) == 1, f"blob len={len(embedded[0].resource.blob)}")
+    check("batch has summary", len(texts) == 1)
+
+    from openpyxl import load_workbook
+    wb = load_workbook(BytesIO(base64.b64decode(embedded[0].resource.blob)))
+    ws = wb.active
+    headers = [ws.cell(row=1, column=i).value for i in range(1, 13)]
+    expected_headers = ["日期", "项目", "公司", "部门", "客户", "类型", "数量", "单价", "金额", "图片", "状态", "备注"]
+    check("batch headers", headers == expected_headers, f"headers={headers}")
+    check("batch has data rows", ws.max_row >= 2, f"rows={ws.max_row}")
+    wb.close()
+
+    companies = json.loads(queries.list_companies(ctx=ctx))
+    if companies:
+        company_batch = invoices.generate_invoices_batch(company_id=companies[0]["id"], limit=5, ctx=ctx)
+        check("batch company_id call", company_batch is not None)
 
     # --- cleanup ---
     deleted = json.loads(mutations.delete_sale(sale_id, ctx=ctx))
